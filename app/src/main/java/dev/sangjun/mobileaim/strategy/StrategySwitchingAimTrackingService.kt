@@ -52,8 +52,8 @@ class StrategySwitchingAimTrackingService(
     }
 
     /** No-op when the active strategy doesn't support zeroing (e.g. ChArUco/WhyCon). */
-    override fun setZero(rotationDeviceFrame: DoubleArray, rotationDegrees: Int) {
+    override fun setZero() {
         val active = strategies.getValue(settingsRepository.settings.value.strategy)
-        (active as? ZeroableAimTracking)?.setZero(rotationDeviceFrame, rotationDegrees)
+        (active as? ZeroableAimTracking)?.setZero()
     }
 }

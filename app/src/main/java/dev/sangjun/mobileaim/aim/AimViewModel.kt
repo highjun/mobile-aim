@@ -73,9 +73,9 @@ class AimViewModel(
 
     /**
      * Set by [onZeroButtonPressed] (main thread) and consumed on the next [onFrame] (camera
-     * thread) — [ZeroableAimTracking.setZero] needs a `rotationDegrees` value, which is only ever
-     * computed fresh inside [onFrame], so zeroing rides along with the next frame rather than
-     * needing its own cached copy of that value.
+     * thread) — zeroing rides along with the next frame so it can share that frame's
+     * `rotationDeviceFrame`/`rotationDegrees` reading with [dev.sangjun.mobileaim.driftdetection.IDriftMonitorService.setReference]
+     * rather than needing its own cached copy of that value.
      */
     private var pendingZeroRequest = false
 
@@ -144,9 +144,7 @@ class AimViewModel(
 
             if (pendingZeroRequest) {
                 pendingZeroRequest = false
-                rotationDeviceFrame?.let {
-                    (trackingService as? ZeroableAimTracking)?.setZero(it, rotationDegrees)
-                }
+                (trackingService as? ZeroableAimTracking)?.setZero()
                 // "영점" doubles as the drift monitor's reference capture — the same "this is the
                 // known-good baseline" moment applies to both, and it avoids a second dedicated button.
                 driftMonitor.setReference(gray, rotationDegrees, rotationDeviceFrame)
