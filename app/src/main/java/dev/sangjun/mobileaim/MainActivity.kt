@@ -14,9 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import dev.sangjun.mobileaim.feature.aim.AimViewModel
-import dev.sangjun.mobileaim.ui.MainScreen
-import dev.sangjun.mobileaim.ui.theme.MobileAimTheme
+import dev.sangjun.mobileaim.aim.AimViewModel
+import dev.sangjun.mobileaim.app.ui.MainScreen
+import dev.sangjun.mobileaim.app.ui.theme.MobileAimTheme
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
 class MainActivity : ComponentActivity() {

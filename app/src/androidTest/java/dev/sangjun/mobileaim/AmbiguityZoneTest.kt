@@ -2,12 +2,17 @@ package dev.sangjun.mobileaim
 
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.sangjun.mobileaim.config.MarkerConfig
-import dev.sangjun.mobileaim.feature.geometry.Point2Px
-import dev.sangjun.mobileaim.feature.geometry.Point3Mm
-import dev.sangjun.mobileaim.feature.pose.CameraIntrinsics
-import dev.sangjun.mobileaim.feature.pose.OpenCvPoseEstimationService
-import dev.sangjun.mobileaim.feature.pose.PoseEstimate
+import dev.sangjun.mobileaim.strategy.checkermarker.CameraIntrinsics
+import dev.sangjun.mobileaim.strategy.checkermarker.CharucoMarkerDetectionService
+import dev.sangjun.mobileaim.strategy.checkermarker.GravityPoseDisambiguator
+import dev.sangjun.mobileaim.strategy.checkermarker.MarkerConfig
+import dev.sangjun.mobileaim.strategy.checkermarker.OpenCvPoseEstimationService
+import dev.sangjun.mobileaim.strategy.checkermarker.PoseEstimate
+import dev.sangjun.mobileaim.utils.Point2Px
+import dev.sangjun.mobileaim.utils.Point3Mm
+import java.util.Random
+import kotlin.math.cos
+import kotlin.math.sin
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -21,19 +26,16 @@ import org.opencv.core.MatOfDouble
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.MatOfPoint3f
 import org.opencv.core.Point3
-import java.util.Random
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
  * The success criterion for the gravity-disambiguation redesign: sweep the rig's real operating
  * envelope (200-400mm distance, 0-15 degree tilt, 45/55/65mm boards, and a marginal 5-of-9-corner
- * detection matching [dev.sangjun.mobileaim.feature.marker.CharucoMarkerDetectionService]'s
+ * detection matching [dev.sangjun.mobileaim.strategy.checkermarker.CharucoMarkerDetectionService]'s
  * minimum gate) with realistic corner noise, and confirm gravity disambiguation never makes the
  * planar pose's up/down-flip twin *more* likely to be picked than reprojection error alone.
  *
  * A *tilt* (rotation about the board's local X axis) is used deliberately, not yaw — that is the
- * ambiguity mode gravity actually targets (see [dev.sangjun.mobileaim.feature.pose.GravityPoseDisambiguator]'s
+ * ambiguity mode gravity actually targets (see [dev.sangjun.mobileaim.strategy.checkermarker.GravityPoseDisambiguator]'s
  * class doc) and the one reported as "aim point flips top-to-bottom of the screen."
  *
  * Measured finding, worth stating plainly: within this operating envelope, even at the 5-corner

@@ -2,14 +2,18 @@ package dev.sangjun.mobileaim
 
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.sangjun.mobileaim.config.MarkerConfig
-import dev.sangjun.mobileaim.feature.geometry.Point2Px
-import dev.sangjun.mobileaim.feature.geometry.Point3Mm
-import dev.sangjun.mobileaim.feature.pose.CameraIntrinsics
-import dev.sangjun.mobileaim.feature.pose.OpenCvPoseEstimationService
-import dev.sangjun.mobileaim.feature.pose.PoseEstimate
-import dev.sangjun.mobileaim.feature.pose.PoseProjector
-import dev.sangjun.mobileaim.feature.pose.PoseSmoother
+import dev.sangjun.mobileaim.strategy.checkermarker.CameraIntrinsics
+import dev.sangjun.mobileaim.strategy.checkermarker.MarkerConfig
+import dev.sangjun.mobileaim.strategy.checkermarker.OpenCvPoseEstimationService
+import dev.sangjun.mobileaim.strategy.checkermarker.PoseEstimate
+import dev.sangjun.mobileaim.strategy.checkermarker.PoseProjector
+import dev.sangjun.mobileaim.strategy.checkermarker.PoseSmoother
+import dev.sangjun.mobileaim.utils.Point2Px
+import dev.sangjun.mobileaim.utils.Point3Mm
+import java.util.Random
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -22,10 +26,6 @@ import org.opencv.core.MatOfDouble
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.MatOfPoint3f
 import org.opencv.core.Point3
-import java.util.Random
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
  * Measures how much the reticle moves when the marker is *not* moving.

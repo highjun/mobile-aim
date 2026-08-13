@@ -2,7 +2,7 @@ package dev.sangjun.mobileaim
 
 import android.app.Application
 import android.util.Log
-import dev.sangjun.mobileaim.di.appModule
+import dev.sangjun.mobileaim.app.appModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import org.opencv.android.OpenCVLoader

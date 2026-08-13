@@ -2,13 +2,17 @@ package dev.sangjun.mobileaim
 
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.sangjun.mobileaim.config.MarkerConfig
-import dev.sangjun.mobileaim.feature.geometry.Point2Px
-import dev.sangjun.mobileaim.feature.geometry.Point3Mm
-import dev.sangjun.mobileaim.feature.pose.CameraIntrinsics
-import dev.sangjun.mobileaim.feature.pose.OpenCvPoseEstimationService
-import dev.sangjun.mobileaim.feature.pose.PoseEstimate
-import dev.sangjun.mobileaim.feature.pose.PoseProjector
+import dev.sangjun.mobileaim.strategy.checkermarker.CameraIntrinsics
+import dev.sangjun.mobileaim.strategy.checkermarker.GravityPoseDisambiguator
+import dev.sangjun.mobileaim.strategy.checkermarker.MarkerConfig
+import dev.sangjun.mobileaim.strategy.checkermarker.OpenCvPoseEstimationService
+import dev.sangjun.mobileaim.strategy.checkermarker.PoseEstimate
+import dev.sangjun.mobileaim.strategy.checkermarker.PoseProjector
+import dev.sangjun.mobileaim.utils.Point2Px
+import dev.sangjun.mobileaim.utils.Point3Mm
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -23,9 +27,6 @@ import org.opencv.core.MatOfDouble
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.MatOfPoint3f
 import org.opencv.core.Point3
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
  * Validates the pose-estimation + projection math against synthetic ground truth.
@@ -173,7 +174,7 @@ class ProjectionAccuracyTest {
      * through projection catches that, because aiming [RANGE_METERS] out from a board a few
      * centimetres across amplifies any rotation error by roughly range/distance. This deliberately
      * exercises *yaw* (not tilt), and without a gravity hint: yaw leaves the board's local Y axis
-     * fixed, so [dev.sangjun.mobileaim.feature.pose.GravityPoseDisambiguator] has no discriminating
+     * fixed, so [dev.sangjun.mobileaim.strategy.checkermarker.GravityPoseDisambiguator] has no discriminating
      * power here — this is characterising the solver/candidate-selection defence on its own. The
      * gravity-resolved tilt ambiguity gets its own dedicated sweep in AmbiguityZoneTest. Measured
      * numbers land in logcat under the tag below.
