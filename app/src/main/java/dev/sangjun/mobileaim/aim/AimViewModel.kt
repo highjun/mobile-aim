@@ -6,9 +6,10 @@ import dev.sangjun.mobileaim.app.settings.ISettingsRepository
 import dev.sangjun.mobileaim.logging.CaptureRow
 import dev.sangjun.mobileaim.logging.ICaptureLogWriter
 import dev.sangjun.mobileaim.logging.ISensorMotionLogger
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -22,17 +23,30 @@ class AimViewModel(
     private val motionLogger: ISensorMotionLogger,
     private val captureLogWriter: ICaptureLogWriter,
 ) : ViewModel() {
-    init {
-        motionLogger.start()
-    }
+    /**
+     * Whether the continuous logging session (IMU CSV here + camera video recording, started by
+     * [dev.sangjun.mobileaim.app.ui.MainScreen] reacting to [uiState]'s [AimUiState.isLoggingActive])
+     * is running. Off by default — never starts on its own, only [toggleLogging] flips it.
+     */
+    private val isLoggingActiveFlow = MutableStateFlow(false)
 
-    val uiState: StateFlow<AimUiState> = settingsRepository.settings
-        .map { AimUiState(it.reticleXFraction, it.reticleYFraction) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
+    val uiState: StateFlow<AimUiState> = combine(
+        settingsRepository.settings,
+        isLoggingActiveFlow,
+    ) { settings, isLoggingActive ->
+        AimUiState(settings.reticleXFraction, settings.reticleYFraction, isLoggingActive)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
 
     /** [xFraction]/[yFraction] are 0..1 across the displayed camera preview. */
     fun onReticleDrag(xFraction: Float, yFraction: Float) {
         settingsRepository.updateReticlePosition(xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
+    }
+
+    /** Starts/stops the IMU CSV log; [uiState]'s [AimUiState.isLoggingActive] separately drives video recording. */
+    fun toggleLogging() {
+        val next = !isLoggingActiveFlow.value
+        if (next) motionLogger.start() else motionLogger.stop()
+        isLoggingActiveFlow.value = next
     }
 
     override fun onCleared() {

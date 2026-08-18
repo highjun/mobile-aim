@@ -4,6 +4,8 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.Recorder
+import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -15,11 +17,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
-/** v1: plain preview + a shutter capture use case — no `ImageAnalysis`, since there's no CV frame consumer anymore. */
+/** v1: plain preview + shutter/video capture use cases — no `ImageAnalysis`, since there's no CV frame consumer anymore. */
 @Composable
 fun CameraPreview(
     hasCameraPermission: Boolean,
     onImageCaptureReady: (ImageCapture) -> Unit,
+    onVideoCaptureReady: (VideoCapture<Recorder>) -> Unit,
     onCameraError: (Throwable) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -51,6 +54,8 @@ fun CameraPreview(
                             it.setSurfaceProvider(previewView.surfaceProvider)
                         }
                         val imageCapture = ImageCapture.Builder().build()
+                        val recorder = Recorder.Builder().build()
+                        val videoCapture = VideoCapture.withOutput(recorder)
 
                         provider.unbindAll()
                         provider.bindToLifecycle(
@@ -58,8 +63,10 @@ fun CameraPreview(
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
                             imageCapture,
+                            videoCapture,
                         )
                         onImageCaptureReady(imageCapture)
+                        onVideoCaptureReady(videoCapture)
                     } catch (error: Exception) {
                         onCameraError(error)
                     }

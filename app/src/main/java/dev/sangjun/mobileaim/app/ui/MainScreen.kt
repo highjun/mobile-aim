@@ -3,10 +3,16 @@ package dev.sangjun.mobileaim.app.ui
 import android.util.Log
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,7 +36,24 @@ fun MainScreen(
     val context = LocalContext.current
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     val onImageCaptureReady = remember { { capture: ImageCapture -> imageCapture = capture } }
+    var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
+    val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder> -> videoCapture = capture } }
+    var activeRecording by remember { mutableStateOf<Recording?>(null) }
     val uiState by aimViewModel.uiState.collectAsState()
+
+    // The logging session's on/off state lives in AimViewModel (see AimUiState.isLoggingActive);
+    // this just reacts to it to drive the CameraX Recording object, which can't live in the
+    // ViewModel since it's tied to the bound VideoCapture use case.
+    LaunchedEffect(uiState.isLoggingActive, videoCapture) {
+        val capture = videoCapture ?: return@LaunchedEffect
+        if (uiState.isLoggingActive) {
+            if (activeRecording != null) return@LaunchedEffect
+            activeRecording = startVideoRecording(context, capture)
+        } else {
+            activeRecording?.stop()
+            activeRecording = null
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -40,12 +63,14 @@ fun MainScreen(
         CameraPreview(
             hasCameraPermission = hasCameraPermission,
             onImageCaptureReady = onImageCaptureReady,
+            onVideoCaptureReady = onVideoCaptureReady,
             onCameraError = onCameraError,
         )
 
         AimOverlay(
             uiState = uiState,
             onReticleDrag = aimViewModel::onReticleDrag,
+            onToggleLogging = aimViewModel::toggleLogging,
             onCaptureClick = {
                 capturePhoto(context, imageCapture) { captureId -> aimViewModel.logCaptureSnapshot(captureId) }
             },
@@ -76,4 +101,22 @@ private fun capturePhoto(context: android.content.Context, imageCapture: ImageCa
             }
         },
     )
+}
+
+/**
+ * Starts recording camera video (no audio — the logging session only needs to visually confirm
+ * the reticle stays put during a shake test, and skipping audio avoids needing RECORD_AUDIO) to
+ * `sessions/video_<timestamp>.mp4`.
+ */
+private fun startVideoRecording(context: android.content.Context, videoCapture: VideoCapture<Recorder>): Recording {
+    val dir = File(context.getExternalFilesDir(null), "sessions").apply { mkdirs() }
+    val id = System.currentTimeMillis().toString()
+    val outputOptions = FileOutputOptions.Builder(File(dir, "video_$id.mp4")).build()
+    return videoCapture.output
+        .prepareRecording(context, outputOptions)
+        .start(ContextCompat.getMainExecutor(context)) { event ->
+            if (event is VideoRecordEvent.Finalize && event.hasError()) {
+                Log.w("MobileAimCapture", "Video recording failed: ${event.error}", event.cause)
+            }
+        }
 }

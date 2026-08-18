@@ -32,7 +32,11 @@ class SensorMotionLogger(private val context: Context) : ISensorMotionLogger, Se
     private val accelSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val gyroSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
-    private val handlerThread = HandlerThread("MobileAimSensorLog")
+    // A java.lang.Thread can only ever be started once — even after it's finished, calling
+    // .start() again throws IllegalThreadStateException. start()/stop() can now run many times
+    // per process (user-toggled Play/Pause, not just once at app launch), so a fresh HandlerThread
+    // is created on every start() rather than reusing one instance across the whole session.
+    private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
     private var writer: BufferedWriter? = null
 
@@ -42,9 +46,10 @@ class SensorMotionLogger(private val context: Context) : ISensorMotionLogger, Se
     override val latestGyro: StateFlow<DoubleArray?> = mutableLatestGyro
 
     override fun start() {
-        if (handlerThread.isAlive) return
-        handlerThread.start()
-        val handler = Handler(handlerThread.looper)
+        if (handlerThread != null) return
+        val thread = HandlerThread("MobileAimSensorLog").apply { start() }
+        handlerThread = thread
+        val handler = Handler(thread.looper)
         this.handler = handler
         writer = openWriter()
         accelSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME, handler) }
@@ -65,7 +70,8 @@ class SensorMotionLogger(private val context: Context) : ISensorMotionLogger, Se
                 Log.w(TAG, "Failed to close motion log", error)
             }
         }
-        handlerThread.quitSafely()
+        handlerThread?.quitSafely()
+        handlerThread = null
         handler = null
         mutableLatestAccel.value = null
         mutableLatestGyro.value = null
