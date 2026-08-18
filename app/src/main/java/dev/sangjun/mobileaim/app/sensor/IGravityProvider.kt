@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
  * itself. That is also the convention [dev.sangjun.mobileaim.strategy.checkermarker.GravityPoseDisambiguator]
  * expects for its `gravityCamera` parameter, once rotated into camera frame.
  */
+@Deprecated("deprecated CV 파이프라인 전용 — 새 코드에서 참조 금지")
 interface IGravityProvider {
     /** `[x, y, z]` in the device's physical sensor frame; null until the first reading arrives. */
     val gravity: StateFlow<DoubleArray?>

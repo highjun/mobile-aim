@@ -13,6 +13,7 @@ import android.util.Log
  * sensor-referenced, so it is then mapped into the analysis frame's coordinate system by
  * [IntrinsicsTransform] — centre-crop scaling first, then the frame's rotation.
  */
+@Deprecated("v1에서 비전/마커 추적을 제거함 — 수동 드래그 조준은 aim/AimViewModel 참고")
 class Camera2IntrinsicsProvider(context: Context) : ICameraIntrinsicsProvider {
     private val cameraManager = context.applicationContext.getSystemService(CameraManager::class.java)
 

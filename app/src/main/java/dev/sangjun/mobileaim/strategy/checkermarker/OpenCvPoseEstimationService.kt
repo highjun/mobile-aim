@@ -13,6 +13,7 @@ import org.opencv.core.MatOfPoint3f
 import org.opencv.core.Point
 import org.opencv.core.Point3
 
+@Deprecated("v1에서 비전/마커 추적을 제거함 — 수동 드래그 조준은 aim/AimViewModel 참고")
 class OpenCvPoseEstimationService : IPoseEstimationService {
 
     /** Last accepted pose, used to break ties between near-equivalent planar solutions. */

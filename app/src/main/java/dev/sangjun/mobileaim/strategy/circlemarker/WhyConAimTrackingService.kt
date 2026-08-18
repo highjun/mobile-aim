@@ -26,6 +26,7 @@ import org.opencv.core.Mat
  * meaningful until a real roll reference is added (gravity-based roll fixing, or a WhyCode-style
  * necklace-coded marker — both deferred; see the plan's Stage 2/3).
  */
+@Deprecated("v1에서 비전/마커 추적을 제거함 — 수동 드래그 조준은 aim/AimViewModel 참고")
 class WhyConAimTrackingService(
     private val detector: WhyConDetector = WhyConDetector(),
 ) : IAimTrackingService {

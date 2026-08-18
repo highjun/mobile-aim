@@ -11,6 +11,7 @@ import org.opencv.core.Mat
  * since the last zero — recoil is repeated mechanical shock, and a "rigid" 3D-printed mount can
  * still creep or a screw can loosen over many rounds.
  */
+@Deprecated("거치대 이탈 감지는 CV 추적에 의존했음 — v1에선 흔들기 테스트로 수동 검증")
 interface IDriftMonitorService {
     val state: StateFlow<DriftStatus>
 

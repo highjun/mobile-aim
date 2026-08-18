@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
  * single reading on its own. See [dev.sangjun.mobileaim.aim.AimViewModel] for how such a
  * relative change is turned into a predicted pose during a detection gap.
  */
+@Deprecated("deprecated CV 파이프라인 전용 — 새 코드에서 참조 금지")
 interface IRotationVectorProvider {
     /** `[w, x, y, z]` in the device's physical sensor frame; null until the first reading arrives. */
     val rotation: StateFlow<DoubleArray?>

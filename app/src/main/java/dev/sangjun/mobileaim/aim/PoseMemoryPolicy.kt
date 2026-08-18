@@ -21,6 +21,7 @@ import dev.sangjun.mobileaim.utils.GyroPosePredictor
  * holding onto a wrong orientation if the rig's physical pose genuinely changed while the board was
  * lost. Time-based (not frame-count-based) so it stays meaningful regardless of camera frame rate.
  */
+@Deprecated("deprecated CV 파이프라인의 pose 재획득 정책 — v1은 고정 조준점이라 불필요")
 internal object PoseMemoryPolicy {
     fun shouldForgetPose(missDurationMillis: Long): Boolean = missDurationMillis >= FORGET_AFTER_MILLIS
 

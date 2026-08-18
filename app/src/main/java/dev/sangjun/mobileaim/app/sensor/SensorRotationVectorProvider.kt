@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
  * [start]/[stop] mirror a camera session's own lifecycle: call [start] once a session is live and
  * [stop] when it tears down.
  */
+@Deprecated("deprecated CV 파이프라인 전용 — 새 코드에서 참조 금지")
 class SensorRotationVectorProvider(context: Context) : IRotationVectorProvider, SensorEventListener {
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val rotationSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)

@@ -26,6 +26,7 @@ import dev.sangjun.mobileaim.strategy.checkermarker.RotationMath
  * prediction turns out to rotate the wrong way in practice, this is the single place to fix: swap
  * which of `qCameraFrameOld`/`qCameraFrameNew` gets [RotationMath.conjugate]d below.
  */
+@Deprecated("deprecated CV 파이프라인 전용 — 새 코드에서 참조 금지")
 internal object GyroPosePredictor {
     fun predict(
         lastVisionPose: PoseEstimate,

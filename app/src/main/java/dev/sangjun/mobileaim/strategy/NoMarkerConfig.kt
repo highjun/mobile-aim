@@ -9,6 +9,7 @@ import dev.sangjun.mobileaim.strategy.checkermarker.MarkerConfig
  * conditioning, not the displayed range: the ballistic ladder's actual distance comes from the
  * *target point* ([MarkerConfig.targetLocalPointMm]'s range parameter), not from this pose's tvec.
  */
+@Deprecated("v1은 모드가 하나(수동 드래그)뿐이라 전략 전환 추상화가 불필요해짐")
 object NoMarkerConfig {
     const val NOMINAL_STANDOFF_MM = 300.0
 }

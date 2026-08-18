@@ -1,12 +1,7 @@
 package dev.sangjun.mobileaim.app.settings
 
-import dev.sangjun.mobileaim.strategy.AimStrategy
-
-/** User-calibrated physical values: board size, boresight offset, range preset, and active tracking strategy. */
+/** Reticle position the user set by dragging it onto the laser dot — a fraction (0..1) of the camera preview. */
 data class MarkerSettings(
-    val boardSizeMm: Double,
-    val xOffsetMm: Double,
-    val yOffsetMm: Double,
-    val z0Meters: Float,
-    val strategy: AimStrategy,
+    val reticleXFraction: Float = 0.5f,
+    val reticleYFraction: Float = 0.5f,
 )

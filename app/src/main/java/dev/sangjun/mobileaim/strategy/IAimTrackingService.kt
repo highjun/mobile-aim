@@ -21,6 +21,7 @@ import org.opencv.core.Mat
  * since [dev.sangjun.mobileaim.aim.AimViewModel]'s smoothing/ladder-projection/stale-pose
  * prediction only consume that and don't care how it was obtained.
  */
+@Deprecated("v1은 모드가 하나(수동 드래그)뿐이라 전략 전환 추상화가 불필요해짐")
 interface IAimTrackingService {
     val state: StateFlow<TrackingResult>
 

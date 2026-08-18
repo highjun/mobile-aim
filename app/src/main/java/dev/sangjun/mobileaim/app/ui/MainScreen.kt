@@ -18,11 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimViewModel
-import dev.sangjun.mobileaim.aim.PoseMemoryPolicy
 import dev.sangjun.mobileaim.app.camera.CameraPreview
-import dev.sangjun.mobileaim.app.camera.FocusInput
-import dev.sangjun.mobileaim.app.settings.SettingsDialog
-import dev.sangjun.mobileaim.utils.Point2Px
 import java.io.File
 
 @Composable
@@ -32,22 +28,9 @@ fun MainScreen(
     onCameraError: (Throwable) -> Unit,
 ) {
     val context = LocalContext.current
-    val onFrame = remember(aimViewModel) { aimViewModel::onFrame }
-    val onCameraReady = remember(aimViewModel) { aimViewModel::onCameraReady }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     val onImageCaptureReady = remember { { capture: ImageCapture -> imageCapture = capture } }
     val uiState by aimViewModel.uiState.collectAsState()
-    val settingsState by aimViewModel.settingsState.collectAsState()
-    var showSettings by remember { mutableStateOf(false) }
-    val focusInput = FocusInput(
-        detected = uiState.isMarkerDetected,
-        // Already debounced by PoseMemoryPolicy — non-null only once the miss has gone on long
-        // enough that the pose itself was given up on, not on every dropped frame.
-        lostLong = uiState.errorMessage != null,
-        boardCenterPx = uiState.markerCorners.centroidOrNull(),
-        frameWidth = uiState.frameWidth,
-        frameHeight = uiState.frameHeight,
-    )
 
     Box(
         modifier = Modifier
@@ -56,45 +39,18 @@ fun MainScreen(
     ) {
         CameraPreview(
             hasCameraPermission = hasCameraPermission,
-            focusInput = focusInput,
-            onFrame = onFrame,
-            onCameraReady = onCameraReady,
             onImageCaptureReady = onImageCaptureReady,
             onCameraError = onCameraError,
         )
 
         AimOverlay(
             uiState = uiState,
-            strategy = settingsState.strategy,
-            onRangeChange = aimViewModel::setRangeMeters,
-            onSettingsClick = { showSettings = true },
-            onStrategyChange = aimViewModel::setStrategy,
-            onXYOffsetChange = { xMm, yMm ->
-                aimViewModel.setXOffsetMm(xMm)
-                aimViewModel.setYOffsetMm(yMm)
-            },
-            onBoardSizeChange = aimViewModel::setBoardSizeMm,
-            onZ0Change = aimViewModel::setZ0MetersLive,
-            onZeroClick = aimViewModel::onZeroButtonPressed,
+            onReticleDrag = aimViewModel::onReticleDrag,
             onCaptureClick = {
                 capturePhoto(context, imageCapture) { captureId -> aimViewModel.logCaptureSnapshot(captureId) }
             },
             modifier = Modifier.fillMaxSize(),
         )
-
-        if (showSettings) {
-            SettingsDialog(
-                current = settingsState,
-                onSave = { boardSizeMm, xOffsetMm, yOffsetMm, z0Meters ->
-                    aimViewModel.updateBoardSizeMm(boardSizeMm)
-                    aimViewModel.updateXOffsetMm(xOffsetMm)
-                    aimViewModel.updateYOffsetMm(yOffsetMm)
-                    aimViewModel.updateZ0Meters(z0Meters)
-                    showSettings = false
-                },
-                onDismiss = { showSettings = false },
-            )
-        }
     }
 }
 
@@ -120,10 +76,4 @@ private fun capturePhoto(context: android.content.Context, imageCapture: ImageCa
             }
         },
     )
-}
-
-/** Centre of the detected board corners, for aiming autofocus at where the board actually is. */
-private fun List<Point2Px>.centroidOrNull(): Point2Px? {
-    if (isEmpty()) return null
-    return Point2Px(x = sumOf { it.x.toDouble() }.toFloat() / size, y = sumOf { it.y.toDouble() }.toFloat() / size)
 }

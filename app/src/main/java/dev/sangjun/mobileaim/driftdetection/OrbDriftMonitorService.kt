@@ -26,6 +26,7 @@ import org.opencv.features2d.ORB
  * gyro-explained and cancels out, so only genuinely unexplained motion (the rig's mount slipping
  * relative to the phone) shows up as residual.
  */
+@Deprecated("거치대 이탈 감지는 CV 추적에 의존했음 — v1에선 흔들기 테스트로 수동 검증")
 class OrbDriftMonitorService : IDriftMonitorService {
     private val orb = ORB.create(DriftConfig.ORB_FEATURE_COUNT)
     private val matcher = BFMatcher.create(Core.NORM_HAMMING)

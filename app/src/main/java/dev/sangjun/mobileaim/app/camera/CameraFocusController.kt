@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
  *   surface — the points being aimed at come out of its frames, and the two-argument factory would
  *   silently reference `Preview` instead, whose aspect ratio need not match.
  */
+@Deprecated("마커 검출 중심 오토포커스용이었음 — v1은 ImageAnalysis 자체가 없어 미사용")
 internal class CameraFocusController(
     private val cameraControl: CameraControl,
     private val analysisUseCase: ImageAnalysis,

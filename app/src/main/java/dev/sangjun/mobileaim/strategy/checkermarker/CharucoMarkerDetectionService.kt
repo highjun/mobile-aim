@@ -19,6 +19,7 @@ import org.opencv.objdetect.Objdetect
  * Turning [MarkerDetectionResult.cornerIds] into real 3D positions, scaled by the user's actual
  * board size, is [dev.sangjun.mobileaim.strategy.checkermarker.CharucoAimTrackingService]'s job.
  */
+@Deprecated("v1에서 비전/마커 추적을 제거함 — 수동 드래그 조준은 aim/AimViewModel 참고")
 class CharucoMarkerDetectionService : IMarkerDetectionService {
     private val board = MarkerConfig.charucoBoard(MarkerConfig.DEFAULT_BOARD_SIZE_MM)
     private val detector = CharucoDetector(

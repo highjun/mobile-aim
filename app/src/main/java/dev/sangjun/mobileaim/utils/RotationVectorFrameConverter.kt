@@ -18,6 +18,7 @@ import dev.sangjun.mobileaim.strategy.checkermarker.RotationMath
  * Same caveat as [GravityFrameConverter]: whether `rotationDegrees` alone fully captures the
  * device's `SENSOR_ORIENTATION` for this relationship is unverified without a real device.
  */
+@Deprecated("deprecated CV 파이프라인 전용 — 새 코드에서 참조 금지")
 internal object RotationVectorFrameConverter {
     fun toCameraFrame(deviceQuaternion: DoubleArray, rotationDegrees: Int): DoubleArray {
         val qFrame = frameChangeQuaternion(rotationDegrees)

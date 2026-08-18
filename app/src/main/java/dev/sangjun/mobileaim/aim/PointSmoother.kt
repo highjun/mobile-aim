@@ -7,6 +7,7 @@ import dev.sangjun.mobileaim.utils.Point2Px
  * from handheld shake / corner-detection noise. Call [reset] on a detect/re-detect transition so
  * the reticle snaps to the new position instead of slowly drifting in from the last stale spot.
  */
+@Deprecated("deprecated CV 파이프라인의 조준점 스무딩 — v1은 고정 조준점이라 불필요")
 class PointSmoother(private val alpha: Float = DEFAULT_ALPHA) {
     private var smoothed: Point2Px? = null
 

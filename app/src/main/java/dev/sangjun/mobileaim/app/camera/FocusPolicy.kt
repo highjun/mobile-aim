@@ -49,6 +49,7 @@ internal sealed interface FocusCommand {
  * detected, and could strand the lens on the wrong plane forever; here nothing is ever locked until
  * a real detection has proven both where the board is and that the current focus can resolve it.
  */
+@Deprecated("마커 검출 중심 오토포커스용이었음 — v1은 ImageAnalysis 자체가 없어 미사용")
 internal class FocusPolicy {
     private var locked = false
     private var detectedSinceMillis: Long? = null

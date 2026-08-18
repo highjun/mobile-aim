@@ -16,6 +16,7 @@ import org.opencv.objdetect.CharucoBoard
  * that resolution is ChArUco-specific (an id only means something against this board's own
  * chessboardCorners table), so it doesn't belong in a strategy-agnostic ViewModel.
  */
+@Deprecated("v1에서 비전/마커 추적을 제거함 — 수동 드래그 조준은 aim/AimViewModel 참고")
 class CharucoAimTrackingService(
     private val markerService: IMarkerDetectionService,
     private val poseService: IPoseEstimationService,

@@ -30,6 +30,7 @@ import dev.sangjun.mobileaim.strategy.checkermarker.IntrinsicsTransform
  * feature's plan. If gravity disambiguation picks the wrong pose consistently rather than
  * occasionally, look here first.
  */
+@Deprecated("deprecated CV 파이프라인 전용 — 새 코드에서 참조 금지")
 internal object GravityFrameConverter {
     fun toCameraFrame(gravityDeviceFrame: DoubleArray, rotationDegrees: Int): DoubleArray {
         val (x, y, z) = Triple(gravityDeviceFrame[0], -gravityDeviceFrame[1], -gravityDeviceFrame[2])

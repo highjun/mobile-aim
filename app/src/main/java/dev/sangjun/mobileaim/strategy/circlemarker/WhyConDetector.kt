@@ -19,6 +19,7 @@ import org.opencv.imgproc.Imgproc
  * ring touch the frame edge, ...) that are easy to get subtly wrong; scanning a flat contour list
  * for "two circles, same centre, right area ratio" sidesteps all of that.
  */
+@Deprecated("v1에서 비전/마커 추적을 제거함 — 수동 드래그 조준은 aim/AimViewModel 참고")
 class WhyConDetector {
     fun detect(gray: Mat): RotatedEllipse? {
         val binary = Mat()
