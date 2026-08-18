@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,6 +9,24 @@ plugins {
 // Instrumented tests (and any emulator run) need the emulator's x86_64 native libs, which we
 // otherwise exclude to keep the APK small. Opt in per-invocation: -PemulatorAbi=true
 val includeEmulatorAbi = (project.findProperty("emulatorAbi") as String?)?.toBoolean() ?: false
+
+// Play Store upload key — never committed (see .gitignore). Missing on a fresh checkout unless
+// you generate your own (see the plan doc / README for the keytool command); debug/test tasks
+// still work without it, only *Release tasks need it, and fail loudly below if it's absent.
+val keystorePropertiesFile = file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) load(FileInputStream(keystorePropertiesFile))
+}
+
+gradle.taskGraph.whenReady {
+    val needsSigning = allTasks.any { it.name.contains("Release") }
+    if (needsSigning && !keystorePropertiesFile.exists()) {
+        throw GradleException(
+            "keystore.properties가 없어 릴리스 빌드에 서명할 수 없습니다 — " +
+                "app/app/keystore.properties를 로컬에 생성하세요 (git에 커밋하지 말 것).",
+        )
+    }
+}
 
 android {
     namespace = "dev.sangjun.mobileaim"
@@ -27,6 +48,17 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -34,6 +66,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
