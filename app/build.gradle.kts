@@ -4,6 +4,9 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // 4.x needs AGP 9 / Gradle 9 — this project is still on AGP 8.5.2 / Gradle 8.7, so pinned to
+    // the last 3.x release instead.
+    id("com.github.triplet.play") version "3.13.0"
 }
 
 // Instrumented tests (and any emulator run) need the emulator's x86_64 native libs, which we
@@ -36,7 +39,11 @@ android {
         applicationId = "dev.sangjun.mobileaim"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        // CI passes -PversionCode=<github.run_number> so every auto-published build gets a fresh,
+        // strictly-increasing code without committing anything back to the repo; local builds
+        // (no property set) fall back to 1, which is fine since only *published* codes need to
+        // keep climbing.
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -88,6 +95,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+// Gradle Play Publisher — uploads a signed release bundle straight to the Internal testing track.
+// play-service-account.json is CI-only (written from a GitHub secret, see .github/workflows/); it
+// never exists on a dev machine, which is fine — only the `publish*` tasks need it, everything
+// else (including plain `assembleRelease`/`bundleRelease`) builds without it.
+play {
+    serviceAccountCredentials.set(file("play-service-account.json"))
+    track.set("internal")
 }
 
 dependencies {
