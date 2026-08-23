@@ -34,12 +34,22 @@ class AimViewModel(
         settingsRepository.settings,
         isLoggingActiveFlow,
     ) { settings, isLoggingActive ->
-        AimUiState(settings.reticleXFraction, settings.reticleYFraction, isLoggingActive)
+        AimUiState(
+            reticleXFraction = settings.reticleXFraction,
+            reticleYFraction = settings.reticleYFraction,
+            isLoggingActive = isLoggingActive,
+            brightness = settings.brightness,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
 
     /** [xFraction]/[yFraction] are 0..1 across the displayed camera preview. */
     fun onReticleDrag(xFraction: Float, yFraction: Float) {
         settingsRepository.updateReticlePosition(xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
+    }
+
+    /** [brightness] is 0..1; persisted so the manual screen brightness survives app restarts. */
+    fun onBrightnessChange(brightness: Float) {
+        settingsRepository.updateBrightness(brightness.coerceIn(0f, 1f))
     }
 
     /** Starts/stops the IMU CSV log; [uiState]'s [AimUiState.isLoggingActive] separately drives video recording. */

@@ -6,4 +6,6 @@ data class AimUiState(
     val reticleYFraction: Float = 0.5f,
     /** Whether the IMU CSV log + camera video recording are both currently running (see [dev.sangjun.mobileaim.aim.AimViewModel.toggleLogging]). */
     val isLoggingActive: Boolean = false,
+    /** Manual screen brightness (0..1) the app forces on its window, replacing system auto-brightness. */
+    val brightness: Float = 0.8f,
 )

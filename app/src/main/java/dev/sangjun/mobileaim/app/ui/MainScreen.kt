@@ -22,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimViewModel
 import dev.sangjun.mobileaim.app.camera.CameraPreview
@@ -31,6 +34,8 @@ import java.io.File
 fun MainScreen(
     aimViewModel: AimViewModel,
     hasCameraPermission: Boolean,
+    isFocusMode: Boolean,
+    onToggleFocusMode: () -> Unit,
     onCameraError: (Throwable) -> Unit,
 ) {
     val context = LocalContext.current
@@ -40,6 +45,15 @@ fun MainScreen(
     val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder> -> videoCapture = capture } }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
     val uiState by aimViewModel.uiState.collectAsState()
+
+    // Force the manual brightness onto the host Activity's window; setting an explicit 0..1 value
+    // is what disables the system's auto-brightness for this app (see AimUiState.brightness).
+    LaunchedEffect(uiState.brightness) {
+        val window = context.findActivity()?.window ?: return@LaunchedEffect
+        window.attributes = window.attributes.apply {
+            screenBrightness = uiState.brightness.coerceIn(0.05f, 1f)
+        }
+    }
 
     // The logging session's on/off state lives in AimViewModel (see AimUiState.isLoggingActive);
     // this just reacts to it to drive the CameraX Recording object, which can't live in the
@@ -74,9 +88,22 @@ fun MainScreen(
             onCaptureClick = {
                 capturePhoto(context, imageCapture) { captureId -> aimViewModel.logCaptureSnapshot(captureId) }
             },
+            isFocusMode = isFocusMode,
+            onToggleFocusMode = onToggleFocusMode,
+            onBrightnessChange = aimViewModel::onBrightnessChange,
             modifier = Modifier.fillMaxSize(),
         )
     }
+}
+
+/** Walks the [Context] wrapper chain to the hosting [Activity] (needed to reach its window). */
+private fun Context.findActivity(): Activity? {
+    var context: Context? = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
 }
 
 /**

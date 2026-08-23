@@ -8,11 +8,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -20,6 +25,8 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +51,9 @@ private val ReticleCrossColor = Color(0xFF000000)
  * incidental touch mid-shake-test can't nudge it — find the laser dot on the real target, turn
  * zeroing mode on, drag the reticle onto it, then turn zeroing mode back off.
  *
- * Everything except the reticle itself lives in the top [Header] (this app is landscape-only).
+ * The reticle is drawn large so it stays visible from a distance. Everything else lives in the top
+ * [Header] bar (this app is landscape-only, but rotates freely between the two landscape
+ * orientations so the bar always sits at the physical top — see the manifest's `sensorLandscape`).
  */
 @Composable
 fun AimOverlay(
@@ -52,6 +61,9 @@ fun AimOverlay(
     onReticleDrag: (xFraction: Float, yFraction: Float) -> Unit,
     onToggleLogging: () -> Unit,
     onCaptureClick: () -> Unit,
+    isFocusMode: Boolean,
+    onToggleFocusMode: () -> Unit,
+    onBrightnessChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isZeroingMode by remember { mutableStateOf(false) }
@@ -79,15 +91,20 @@ fun AimOverlay(
             isLoggingActive = uiState.isLoggingActive,
             onToggleLogging = onToggleLogging,
             onCaptureClick = onCaptureClick,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(WindowInsets.safeDrawing.asPaddingValues())
-                .padding(12.dp),
+            isFocusMode = isFocusMode,
+            onToggleFocusMode = onToggleFocusMode,
+            brightness = uiState.brightness,
+            onBrightnessChange = onBrightnessChange,
+            modifier = Modifier.align(Alignment.TopCenter),
         )
     }
 }
 
-/** The only UI besides the reticle itself — landscape top bar, three icon buttons, nothing else. */
+/**
+ * A full-width translucent bar pinned to the top edge — the only UI besides the reticle. Aiming
+ * controls sit on the left; the manual brightness slider on the right (there is plenty of room in
+ * landscape). The bar is a plain overlay drawn above the camera preview.
+ */
 @Composable
 private fun Header(
     isZeroingMode: Boolean,
@@ -95,26 +112,82 @@ private fun Header(
     isLoggingActive: Boolean,
     onToggleLogging: () -> Unit,
     onCaptureClick: () -> Unit,
+    isFocusMode: Boolean,
+    onToggleFocusMode: () -> Unit,
+    brightness: Float,
+    onBrightnessChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        HeaderIconButton(
-            icon = Icons.Filled.GpsFixed,
-            contentDescription = "영점 조준 모드",
-            active = isZeroingMode,
-            onClick = onToggleZeroingMode,
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(WindowInsets.safeDrawing.asPaddingValues())
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                HeaderIconButton(
+                    icon = Icons.Filled.GpsFixed,
+                    contentDescription = "영점 조준 모드",
+                    active = isZeroingMode,
+                    onClick = onToggleZeroingMode,
+                )
+                HeaderIconButton(
+                    icon = if (isLoggingActive) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isLoggingActive) "로깅 정지" else "로깅 시작",
+                    active = isLoggingActive,
+                    onClick = onToggleLogging,
+                )
+                HeaderIconButton(
+                    icon = Icons.Filled.CameraAlt,
+                    contentDescription = "캡처",
+                    active = false,
+                    onClick = onCaptureClick,
+                )
+                HeaderIconButton(
+                    icon = Icons.Filled.DoNotDisturbOn,
+                    contentDescription = if (isFocusMode) "집중 모드 끄기" else "집중 모드 켜기",
+                    active = isFocusMode,
+                    onClick = onToggleFocusMode,
+                )
+            }
+
+            BrightnessControl(brightness = brightness, onBrightnessChange = onBrightnessChange)
+        }
+    }
+}
+
+/** Sun icon + slider (0.05..1) that drives the window's forced brightness — never 0, so the screen never goes fully dark. */
+@Composable
+private fun BrightnessControl(
+    brightness: Float,
+    onBrightnessChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.BrightnessHigh,
+            contentDescription = "화면 밝기",
+            tint = MaterialTheme.colorScheme.onSurface,
         )
-        HeaderIconButton(
-            icon = if (isLoggingActive) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-            contentDescription = if (isLoggingActive) "로깅 정지" else "로깅 시작",
-            active = isLoggingActive,
-            onClick = onToggleLogging,
-        )
-        HeaderIconButton(
-            icon = Icons.Filled.CameraAlt,
-            contentDescription = "캡처",
-            active = false,
-            onClick = onCaptureClick,
+        Slider(
+            value = brightness,
+            onValueChange = onBrightnessChange,
+            valueRange = 0.05f..1f,
+            modifier = Modifier.width(200.dp),
         )
     }
 }
@@ -144,13 +217,13 @@ private fun HeaderIconButton(
 }
 
 private fun DrawScope.drawActiveReticle(center: Offset) {
-    val gap = 14.dp.toPx()
-    val armLength = 20.dp.toPx()
-    val stroke = 2.dp.toPx()
+    val gap = 22.dp.toPx()
+    val armLength = 34.dp.toPx()
+    val stroke = 3.dp.toPx()
 
     drawLine(ReticleCrossColor, Offset(center.x, center.y - gap - armLength), Offset(center.x, center.y - gap), strokeWidth = stroke)
     drawLine(ReticleCrossColor, Offset(center.x, center.y + gap), Offset(center.x, center.y + gap + armLength), strokeWidth = stroke)
     drawLine(ReticleCrossColor, Offset(center.x - gap - armLength, center.y), Offset(center.x - gap, center.y), strokeWidth = stroke)
     drawLine(ReticleCrossColor, Offset(center.x + gap, center.y), Offset(center.x + gap + armLength, center.y), strokeWidth = stroke)
-    drawCircle(color = ReticleDotColor, radius = 3.dp.toPx(), center = center)
+    drawCircle(color = ReticleDotColor, radius = 6.dp.toPx(), center = center)
 }
