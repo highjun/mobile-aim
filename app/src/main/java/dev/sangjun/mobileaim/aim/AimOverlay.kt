@@ -1,14 +1,21 @@
 package dev.sangjun.mobileaim.aim
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -21,12 +28,10 @@ import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,15 +39,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 
 /** The precise point of aim stays red; the surrounding cross is black so it reads on bright scenes. */
 private val ReticleDotColor = Color(0xFFFF1B1B)
 private val ReticleCrossColor = Color(0xFF000000)
+
+/** Never lets the forced brightness go all the way to 0 — the screen must stay usable, not black. */
+private const val MinBrightness = 0.05f
+private const val MaxBrightness = 1f
 
 /**
  * v1: the reticle is wherever the user last dragged it ([uiState.reticleXFraction]/`YFraction`,
@@ -102,8 +113,10 @@ fun AimOverlay(
 
 /**
  * A full-width translucent bar pinned to the top edge — the only UI besides the reticle. Aiming
- * controls sit on the left; the manual brightness slider on the right (there is plenty of room in
- * landscape). The bar is a plain overlay drawn above the camera preview.
+ * controls sit on the left as labeled chips (icon-only buttons are hard to read at a glance —
+ * a text label under each icon removes the guesswork); the manual brightness slider sits on the
+ * right (there is plenty of room in landscape). The bar is a plain overlay drawn above the camera
+ * preview.
  */
 @Composable
 private fun Header(
@@ -135,84 +148,126 @@ private fun Header(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                HeaderIconButton(
+                LabeledHeaderButton(
                     icon = Icons.Filled.GpsFixed,
-                    contentDescription = "영점 조준 모드",
+                    label = "영점",
                     active = isZeroingMode,
                     onClick = onToggleZeroingMode,
                 )
-                HeaderIconButton(
+                LabeledHeaderButton(
                     icon = if (isLoggingActive) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isLoggingActive) "로깅 정지" else "로깅 시작",
+                    label = if (isLoggingActive) "정지" else "로깅",
                     active = isLoggingActive,
                     onClick = onToggleLogging,
                 )
-                HeaderIconButton(
+                LabeledHeaderButton(
                     icon = Icons.Filled.CameraAlt,
-                    contentDescription = "캡처",
+                    label = "캡처",
                     active = false,
                     onClick = onCaptureClick,
                 )
-                HeaderIconButton(
+                LabeledHeaderButton(
                     icon = Icons.Filled.DoNotDisturbOn,
-                    contentDescription = if (isFocusMode) "집중 모드 끄기" else "집중 모드 켜기",
+                    label = "집중",
                     active = isFocusMode,
                     onClick = onToggleFocusMode,
                 )
             }
 
-            BrightnessControl(brightness = brightness, onBrightnessChange = onBrightnessChange)
+            BrightnessCapsuleSlider(brightness = brightness, onBrightnessChange = onBrightnessChange)
         }
     }
 }
 
-/** Sun icon + slider (0.05..1) that drives the window's forced brightness — never 0, so the screen never goes fully dark. */
+/**
+ * A rounded chip with the icon stacked above a short label — icon-only buttons don't say what
+ * they do at a glance, and this is meant to be read from a distance while aiming. [active] drives
+ * the same accent-fill treatment the reticle/logging controls already use elsewhere. The label
+ * carries the accessible name (via the [Surface]'s clickable semantics), so the icon itself is
+ * marked decorative to avoid TalkBack announcing it twice.
+ */
 @Composable
-private fun BrightnessControl(
-    brightness: Float,
-    onBrightnessChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.BrightnessHigh,
-            contentDescription = "화면 밝기",
-            tint = MaterialTheme.colorScheme.onSurface,
-        )
-        Slider(
-            value = brightness,
-            onValueChange = onBrightnessChange,
-            valueRange = 0.05f..1f,
-            modifier = Modifier.width(200.dp),
-        )
-    }
-}
-
-@Composable
-private fun HeaderIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
+private fun LabeledHeaderButton(
+    icon: ImageVector,
+    label: String,
     active: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    FilledIconButton(
+    Surface(
         onClick = onClick,
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = if (active) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-            } else {
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
-            },
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-        modifier = modifier.size(48.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = if (active) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+        },
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.size(width = 56.dp, height = 52.dp),
     ) {
-        Icon(icon, contentDescription = contentDescription)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(text = label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        }
+    }
+}
+
+/**
+ * A One UI–style capsule brightness slider: a thick pill-shaped track that fills from the left to
+ * show the level, with the sun icon embedded at the start — no separate thumb knob, and no numeric
+ * readout (kept visually clean; the fill length itself is the reading). Tapping or dragging
+ * anywhere across the track jumps the value straight to that point, which is faster to use
+ * one-handed outdoors than dragging a small thumb.
+ */
+@Composable
+private fun BrightnessCapsuleSlider(
+    brightness: Float,
+    onBrightnessChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fillFraction = ((brightness - MinBrightness) / (MaxBrightness - MinBrightness)).coerceIn(0f, 1f)
+    val shape = RoundedCornerShape(percent = 50)
+
+    Box(
+        modifier = modifier
+            .width(210.dp)
+            .height(48.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
+            .pointerInput(Unit) {
+                fun onXChanged(x: Float) {
+                    val fraction = (x / size.width).coerceIn(0f, 1f)
+                    onBrightnessChange(MinBrightness + fraction * (MaxBrightness - MinBrightness))
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    onXChanged(down.position.x)
+                    drag(down.id) { change ->
+                        change.consume()
+                        onXChanged(change.position.x)
+                    }
+                }
+            },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fillFraction)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
+        )
+        Icon(
+            imageVector = Icons.Filled.BrightnessHigh,
+            contentDescription = "화면 밝기",
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 14.dp)
+                .size(20.dp),
+        )
     }
 }
 
