@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
+import dev.sangjun.mobileaim.app.settings.AimMode
 import dev.sangjun.mobileaim.app.ui.theme.MobileAimTheme
 import org.junit.Rule
 import org.junit.Test
@@ -25,6 +26,11 @@ import org.robolectric.annotation.GraphicsMode
  * opened directly instead of installing the APK on a device just to look at it. Uses Roborazzi's
  * [captureRoboImage] rather than plain compose-ui-test's `captureToImage()`, which times out
  * waiting for a redraw under Robolectric's paused main Looper.
+ *
+ * Split from [AimOverlayManualGunScreenshotTest] into its own class rather than a second `@Test`
+ * here — Robolectric gives each test *class* a fresh `Application`, but within one class Koin's
+ * `GlobalContext` (a JVM static) survives across `@Test` methods, so a second
+ * `MobileAimApplication.onCreate()` call in the same class throws `KoinAppAlreadyStartedException`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -44,6 +50,7 @@ class AimOverlayScreenshotTest {
                             reticleYFraction = 0.5f,
                             isLoggingActive = false,
                             brightness = 0.8f,
+                            aimMode = AimMode.FIREARM,
                         ),
                         onReticleDrag = { _, _ -> },
                         onToggleLogging = {},
@@ -51,6 +58,9 @@ class AimOverlayScreenshotTest {
                         isFocusMode = false,
                         onToggleFocusMode = {},
                         onBrightnessChange = {},
+                        onToggleAimMode = {},
+                        onManualGunDistanceChange = {},
+                        onManualGunVelocityChange = {},
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

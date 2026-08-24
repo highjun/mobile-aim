@@ -2,6 +2,8 @@ package dev.sangjun.mobileaim.aim
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.sangjun.mobileaim.app.camera.CameraFov
+import dev.sangjun.mobileaim.app.settings.AimMode
 import dev.sangjun.mobileaim.app.settings.ISettingsRepository
 import dev.sangjun.mobileaim.logging.CaptureRow
 import dev.sangjun.mobileaim.logging.ICaptureLogWriter
@@ -13,10 +15,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * v1: no vision, no pose estimation. The reticle is wherever the user last dragged it (see
- * [onReticleDrag]) — held completely fixed, exactly like a scope's reticle rigidly mounted to the
- * barrel. Nothing here reacts to camera frames or sensors for aiming; [motionLogger] is only for
- * offline shake-test analysis, unrelated to where the reticle is drawn.
+ * v1: no vision, no pose estimation, no real-time camera frame processing. There's one shared
+ * zero the user drags onto their laser bore-sighter (see [onReticleDrag]) — held completely
+ * fixed, exactly like a scope's reticle rigidly mounted to the barrel. [AimMode.FIREARM] shows
+ * that zero as-is (a real bullet's ballistic drop is negligible at short/mid range, so the laser
+ * is trustworthy). [AimMode.MANUAL_GUN] adds a computed drop offset on top of the same zero (see
+ * [computeDropOffsetFraction]) — a slow airgun/spring-gun projectile drops noticeably even over a
+ * few meters, so the raw laser point alone isn't accurate for it. [motionLogger] is unrelated to
+ * either — only for offline shake-test analysis.
  */
 class AimViewModel(
     private val settingsRepository: ISettingsRepository,
@@ -30,21 +36,54 @@ class AimViewModel(
      */
     private val isLoggingActiveFlow = MutableStateFlow(false)
 
+    /** Set once from [onCameraFovAvailable] when the camera binds — null until then, and the drop offset is skipped (falls back to the raw zero, same as firearm mode) rather than guessing. */
+    private val cameraFovFlow = MutableStateFlow<CameraFov?>(null)
+
     val uiState: StateFlow<AimUiState> = combine(
         settingsRepository.settings,
         isLoggingActiveFlow,
-    ) { settings, isLoggingActive ->
+        cameraFovFlow,
+    ) { settings, isLoggingActive, cameraFov ->
+        val dropOffset = if (settings.aimMode == AimMode.MANUAL_GUN && cameraFov != null) {
+            computeDropOffsetFraction(settings.manualGunDistanceMeters, settings.manualGunVelocityMps, cameraFov)
+        } else {
+            0f
+        }
         AimUiState(
             reticleXFraction = settings.reticleXFraction,
-            reticleYFraction = settings.reticleYFraction,
+            reticleYFraction = settings.reticleYFraction + dropOffset,
             isLoggingActive = isLoggingActive,
             brightness = settings.brightness,
+            aimMode = settings.aimMode,
+            manualGunDistanceMeters = settings.manualGunDistanceMeters,
+            manualGunVelocityMps = settings.manualGunVelocityMps,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
 
-    /** [xFraction]/[yFraction] are 0..1 across the displayed camera preview. */
+    /** [xFraction]/[yFraction] are 0..1 across the displayed camera preview. Always edits the shared zero, regardless of [AimMode]. */
     fun onReticleDrag(xFraction: Float, yFraction: Float) {
         settingsRepository.updateReticlePosition(xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
+    }
+
+    /** Toggles between [AimMode.FIREARM] and [AimMode.MANUAL_GUN] — both draw from the same shared zero. */
+    fun onToggleAimMode() {
+        val next = if (uiState.value.aimMode == AimMode.FIREARM) AimMode.MANUAL_GUN else AimMode.FIREARM
+        settingsRepository.updateAimMode(next)
+    }
+
+    /** [distanceMeters] is the currently selected manual-gun engagement distance (5..10), used in the drop calculation. */
+    fun onManualGunDistanceChange(distanceMeters: Float) {
+        settingsRepository.updateManualGunDistance(distanceMeters)
+    }
+
+    /** [velocityMps] is the manual gun's configured muzzle velocity, used in the drop calculation. */
+    fun onManualGunVelocityChange(velocityMps: Float) {
+        settingsRepository.updateManualGunVelocity(velocityMps)
+    }
+
+    /** Called once the camera binds (see [dev.sangjun.mobileaim.app.camera.CameraPreview]'s `onCameraFovReady`). */
+    fun onCameraFovAvailable(fov: CameraFov) {
+        cameraFovFlow.value = fov
     }
 
     /** [brightness] is 0..1; persisted so the manual screen brightness survives app restarts. */

@@ -102,6 +102,7 @@ fun MainScreen(
             hasCameraPermission = hasCameraPermission,
             onImageCaptureReady = onImageCaptureReady,
             onVideoCaptureReady = onVideoCaptureReady,
+            onCameraFovReady = aimViewModel::onCameraFovAvailable,
             onCameraError = onCameraError,
         )
 
@@ -115,6 +116,9 @@ fun MainScreen(
             isFocusMode = isFocusMode,
             onToggleFocusMode = onToggleFocusMode,
             onBrightnessChange = aimViewModel::onBrightnessChange,
+            onToggleAimMode = aimViewModel::onToggleAimMode,
+            onManualGunDistanceChange = aimViewModel::onManualGunDistanceChange,
+            onManualGunVelocityChange = aimViewModel::onManualGunVelocityChange,
             modifier = Modifier.fillMaxSize(),
         )
     }

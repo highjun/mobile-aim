@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import dev.sangjun.mobileaim.app.appModule
 import org.koin.android.ext.koin.androidContext
+import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.opencv.android.OpenCVLoader
 
@@ -18,9 +19,14 @@ class MobileAimApplication : Application() {
             Log.e(TAG, "OpenCV native library failed to load")
         }
 
-        startKoin {
-            androidContext(this@MobileAimApplication)
-            modules(appModule)
+        // Koin's GlobalContext is a JVM static, so a second onCreate() in the same process
+        // (Robolectric gives every test its own Application instance but reuses the JVM across
+        // test classes) would otherwise throw KoinAppAlreadyStartedException.
+        if (GlobalContext.getOrNull() == null) {
+            startKoin {
+                androidContext(this@MobileAimApplication)
+                modules(appModule)
+            }
         }
     }
 

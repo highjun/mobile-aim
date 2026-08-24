@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.CameraAlt
@@ -28,10 +29,14 @@ import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +51,9 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import dev.sangjun.mobileaim.app.settings.AimMode
 
 /** The precise point of aim stays red; the surrounding cross is black so it reads on bright scenes. */
 private val ReticleDotColor = Color(0xFFFF1B1B)
@@ -56,12 +63,23 @@ private val ReticleCrossColor = Color(0xFF000000)
 private const val MinBrightness = 0.05f
 private const val MaxBrightness = 1f
 
+private const val ManualGunMinDistanceMeters = 5f
+private const val ManualGunMaxDistanceMeters = 10f
+
 /**
- * v1: the reticle is wherever the user last dragged it ([uiState.reticleXFraction]/`YFraction`,
- * a 0..1 fraction of this Composable's own size) — held completely fixed, no camera/pose
- * computation. Dragging only moves it while "영점 조준 모드" ([isZeroingMode]) is on, so an
- * incidental touch mid-shake-test can't nudge it — find the laser dot on the real target, turn
- * zeroing mode on, drag the reticle onto it, then turn zeroing mode back off.
+ * v1: no vision, no pose estimation. There's one shared zero the user drags onto their laser
+ * bore-sighter ([uiState.reticleXFraction]/`YFraction` before any drop offset — see
+ * [AimViewModel]) — held completely fixed, no camera/pose computation. Dragging only moves it
+ * while "영점 조준 모드" ([isZeroingMode]) is on, so an incidental touch mid-shake-test can't
+ * nudge it, and it works the same regardless of which [AimMode] is currently showing (both modes
+ * draw from this one zero). While zeroing, the reticle switches to a plain translucent dot instead
+ * of the full crosshair — easier to line up precisely with an actual laser dot than the crosshair's
+ * shape is.
+ *
+ * [AimMode.FIREARM] displays that zero as-is (real bullets drop too little at short/mid range to
+ * matter). [AimMode.MANUAL_GUN] displays it with a computed ballistic-drop offset already added
+ * (done upstream in [AimViewModel] via [computeDropOffsetFraction]) — its header controls
+ * (distance slider + muzzle velocity) only affect that computation, never the zero itself.
  *
  * The reticle is drawn large so it stays visible from a distance. Everything else lives in the top
  * [Header] bar (this app is landscape-only, but rotates freely between the two landscape
@@ -76,6 +94,9 @@ fun AimOverlay(
     isFocusMode: Boolean,
     onToggleFocusMode: () -> Unit,
     onBrightnessChange: (Float) -> Unit,
+    onToggleAimMode: () -> Unit,
+    onManualGunDistanceChange: (Float) -> Unit,
+    onManualGunVelocityChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isZeroingMode by remember { mutableStateOf(false) }
@@ -94,10 +115,15 @@ fun AimOverlay(
         ),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawActiveReticle(Offset(uiState.reticleXFraction * size.width, uiState.reticleYFraction * size.height))
+            drawActiveReticle(
+                center = Offset(uiState.reticleXFraction * size.width, uiState.reticleYFraction * size.height),
+                isZeroingMode = isZeroingMode,
+            )
         }
 
         Header(
+            aimMode = uiState.aimMode,
+            onToggleAimMode = onToggleAimMode,
             isZeroingMode = isZeroingMode,
             onToggleZeroingMode = { isZeroingMode = !isZeroingMode },
             isLoggingActive = uiState.isLoggingActive,
@@ -107,6 +133,10 @@ fun AimOverlay(
             onToggleFocusMode = onToggleFocusMode,
             brightness = uiState.brightness,
             onBrightnessChange = onBrightnessChange,
+            manualGunDistanceMeters = uiState.manualGunDistanceMeters,
+            onManualGunDistanceChange = onManualGunDistanceChange,
+            manualGunVelocityMps = uiState.manualGunVelocityMps,
+            onManualGunVelocityChange = onManualGunVelocityChange,
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
@@ -116,11 +146,14 @@ fun AimOverlay(
  * A full-width translucent bar pinned to the top edge — the only UI besides the reticle. Aiming
  * controls sit on the left as labeled chips (icon-only buttons are hard to read at a glance —
  * a text label under each icon removes the guesswork); the manual brightness slider sits on the
- * right (there is plenty of room in landscape). The bar is a plain overlay drawn above the camera
- * preview.
+ * right (there is plenty of room in landscape). In [AimMode.MANUAL_GUN], a distance slider +
+ * muzzle-velocity button appear between the two, driving [dev.sangjun.mobileaim.aim.AimViewModel]'s
+ * drop calculation. The bar is a plain overlay drawn above the camera preview.
  */
 @Composable
 private fun Header(
+    aimMode: AimMode,
+    onToggleAimMode: () -> Unit,
     isZeroingMode: Boolean,
     onToggleZeroingMode: () -> Unit,
     isLoggingActive: Boolean,
@@ -130,6 +163,10 @@ private fun Header(
     onToggleFocusMode: () -> Unit,
     brightness: Float,
     onBrightnessChange: (Float) -> Unit,
+    manualGunDistanceMeters: Float,
+    onManualGunDistanceChange: (Float) -> Unit,
+    manualGunVelocityMps: Float,
+    onManualGunVelocityChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -149,6 +186,12 @@ private fun Header(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                LabeledHeaderButton(
+                    icon = Icons.Filled.SwapHoriz,
+                    label = if (aimMode == AimMode.FIREARM) "화기" else "수동",
+                    active = aimMode == AimMode.MANUAL_GUN,
+                    onClick = onToggleAimMode,
+                )
                 LabeledHeaderButton(
                     icon = Icons.Filled.GpsFixed,
                     label = "영점",
@@ -175,9 +218,147 @@ private fun Header(
                 )
             }
 
+            if (aimMode == AimMode.MANUAL_GUN) {
+                ManualGunControls(
+                    distanceMeters = manualGunDistanceMeters,
+                    onDistanceChange = onManualGunDistanceChange,
+                    velocityMps = manualGunVelocityMps,
+                    onVelocityChange = onManualGunVelocityChange,
+                )
+            }
+
             BrightnessCapsuleSlider(brightness = brightness, onBrightnessChange = onBrightnessChange)
         }
     }
+}
+
+/** Distance slider (drives the drop calc's engagement distance) + a button opening the muzzle-velocity dialog — only shown in [AimMode.MANUAL_GUN]. */
+@Composable
+private fun ManualGunControls(
+    distanceMeters: Float,
+    onDistanceChange: (Float) -> Unit,
+    velocityMps: Float,
+    onVelocityChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var showVelocityDialog by remember { mutableStateOf(false) }
+
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        DistanceCapsuleSlider(distanceMeters = distanceMeters, onDistanceChange = onDistanceChange)
+        VelocityButton(velocityMps = velocityMps, onClick = { showVelocityDialog = true })
+    }
+
+    if (showVelocityDialog) {
+        VelocityInputDialog(
+            initialVelocityMps = velocityMps,
+            onDismiss = { showVelocityDialog = false },
+            onConfirm = {
+                onVelocityChange(it)
+                showVelocityDialog = false
+            },
+        )
+    }
+}
+
+/**
+ * A capsule slider for the manual gun's engagement distance (5..10m) — unlike [BrightnessCapsuleSlider]
+ * this shows the exact value as text, since the drop calculation is sensitive to it and the user
+ * needs to read it precisely rather than just eyeball a fill level.
+ */
+@Composable
+private fun DistanceCapsuleSlider(
+    distanceMeters: Float,
+    onDistanceChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fillFraction = ((distanceMeters - ManualGunMinDistanceMeters) / (ManualGunMaxDistanceMeters - ManualGunMinDistanceMeters)).coerceIn(0f, 1f)
+    val shape = RoundedCornerShape(percent = 50)
+
+    Box(
+        modifier = modifier
+            .width(140.dp)
+            .height(32.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
+            .pointerInput(Unit) {
+                fun onXChanged(x: Float) {
+                    val fraction = (x / size.width).coerceIn(0f, 1f)
+                    onDistanceChange(ManualGunMinDistanceMeters + fraction * (ManualGunMaxDistanceMeters - ManualGunMinDistanceMeters))
+                }
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    onXChanged(down.position.x)
+                    drag(down.id) { change ->
+                        change.consume()
+                        onXChanged(change.position.x)
+                    }
+                }
+            },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fillFraction)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)),
+        )
+        Text(
+            text = "%.1fm".format(distanceMeters),
+            style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.align(Alignment.Center),
+        )
+    }
+}
+
+@Composable
+private fun VelocityButton(velocityMps: Float, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.height(32.dp),
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+            Text(
+                text = "${velocityMps.toInt()}m/s",
+                style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
+            )
+        }
+    }
+}
+
+/** Muzzle velocity is a set-once-per-gun value, not something adjusted per shot, so a dialog (precise numeric entry) fits better than a slider. */
+@Composable
+private fun VelocityInputDialog(
+    initialVelocityMps: Float,
+    onDismiss: () -> Unit,
+    onConfirm: (Float) -> Unit,
+) {
+    var text by remember { mutableStateOf(initialVelocityMps.toInt().toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("탄속 설정 (m/s)") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it.filter(Char::isDigit) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { text.toFloatOrNull()?.let(onConfirm) }) {
+                Text("확인")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        },
+    )
 }
 
 /**
@@ -279,7 +460,13 @@ private fun BrightnessCapsuleSlider(
     }
 }
 
-private fun DrawScope.drawActiveReticle(center: Offset) {
+/** In zeroing mode, a plain translucent dot (easier to overlay precisely on a real laser dot) replaces the crosshair. */
+private fun DrawScope.drawActiveReticle(center: Offset, isZeroingMode: Boolean) {
+    if (isZeroingMode) {
+        drawCircle(color = ReticleDotColor.copy(alpha = 0.5f), radius = 20.dp.toPx(), center = center)
+        return
+    }
+
     val gap = 22.dp.toPx()
     val armLength = 34.dp.toPx()
     val stroke = 3.dp.toPx()

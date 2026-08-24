@@ -1,5 +1,6 @@
 package dev.sangjun.mobileaim.app.camera
 
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
@@ -23,6 +24,7 @@ fun CameraPreview(
     hasCameraPermission: Boolean,
     onImageCaptureReady: (ImageCapture) -> Unit,
     onVideoCaptureReady: (VideoCapture<Recorder>) -> Unit,
+    onCameraFovReady: (CameraFov) -> Unit,
     onCameraError: (Throwable) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,7 +60,7 @@ fun CameraPreview(
                         val videoCapture = VideoCapture.withOutput(recorder)
 
                         provider.unbindAll()
-                        provider.bindToLifecycle(
+                        val camera = provider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
@@ -67,6 +69,9 @@ fun CameraPreview(
                         )
                         onImageCaptureReady(imageCapture)
                         onVideoCaptureReady(videoCapture)
+
+                        val cameraId = Camera2CameraInfo.from(camera.cameraInfo).cameraId
+                        CameraFovProvider(context).getFov(cameraId)?.let(onCameraFovReady)
                     } catch (error: Exception) {
                         onCameraError(error)
                     }
