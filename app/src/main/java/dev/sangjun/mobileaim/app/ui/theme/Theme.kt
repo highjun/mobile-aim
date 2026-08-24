@@ -6,13 +6,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import dev.sangjun.mobileaim.aim.AimOverlay
 
-// Blue accent drives the controls (slider, icons). The reticle deliberately opts out and stays
-// red-on-black for visibility over arbitrary camera scenes — see AimOverlay.
+// Blue accent drives the controls (slider, icons) — saturated/electric rather than the softer
+// pastel blue Material's tonal palettes default to, so active state reads unmistakably at a
+// glance. The reticle deliberately opts out and stays red-on-black for visibility over arbitrary
+// camera scenes — see AimOverlay.
 private val MobileAimColorScheme = darkColorScheme(
-    primary = Color(0xFF63A4FF),
-    onPrimary = Color(0xFF00305F),
-    primaryContainer = Color(0xFF004785),
-    onPrimaryContainer = Color(0xFFD3E4FF),
+    primary = Color(0xFF0066FF),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFF0047B8),
+    onPrimaryContainer = Color(0xFFD6E4FF),
     secondary = Color(0xFFBBC7DB),
     onSecondary = Color(0xFF253141),
     background = Color(0xFF0B0B0C),

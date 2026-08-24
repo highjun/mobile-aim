@@ -4,6 +4,14 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />
 
+    <!--
+      Normal permission (auto-granted, no runtime prompt) — required just to be *eligible* for
+      Do-Not-Disturb access at all. Without this declared, the system's "앱별 방해 금지 액세스"
+      settings screen won't even list this app as an option, regardless of what
+      NotificationManager.isNotificationPolicyAccessGranted()/setInterruptionFilter() do at runtime.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
     <application
         android:name=".MobileAimApplication"
         android:allowBackup="true"

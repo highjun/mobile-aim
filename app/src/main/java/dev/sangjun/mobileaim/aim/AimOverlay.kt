@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -133,7 +134,7 @@ private fun Header(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-        shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
+        shape = RectangleShape,
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
@@ -196,7 +197,7 @@ private fun LabeledHeaderButton(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(8.dp),
         color = if (active) {
             MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
         } else {
@@ -211,7 +212,14 @@ private fun LabeledHeaderButton(
             verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(text = label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            Text(
+                text = label,
+                // Default line height adds top/bottom leading beyond the glyphs themselves, which
+                // throws off the icon+label block's visual centering inside the chip — pin it to
+                // the font size so the block's actual ink matches its layout bounds.
+                style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
+                maxLines = 1,
+            )
         }
     }
 }
@@ -234,8 +242,8 @@ private fun BrightnessCapsuleSlider(
 
     Box(
         modifier = modifier
-            .width(210.dp)
-            .height(48.dp)
+            .width(200.dp)
+            .height(32.dp)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
             .pointerInput(Unit) {
@@ -265,8 +273,8 @@ private fun BrightnessCapsuleSlider(
             tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = 14.dp)
-                .size(20.dp),
+                .padding(start = 10.dp)
+                .size(16.dp),
         )
     }
 }

@@ -1,18 +1,23 @@
 package dev.sangjun.mobileaim.logging
 
+import android.content.ContentValues
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.provider.MediaStore
 import android.util.Log
 import dev.sangjun.mobileaim.app.sensor.IGravityProvider
 import dev.sangjun.mobileaim.app.sensor.IRotationVectorProvider
+import dev.sangjun.mobileaim.utils.fileTimestampNow
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
+import java.io.OutputStreamWriter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -95,13 +100,33 @@ class SensorMotionLogger(private val context: Context) : ISensorMotionLogger, Se
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
-    private fun openWriter(): BufferedWriter? = try {
-        val dir = File(context.getExternalFilesDir(null), "sessions").apply { mkdirs() }
-        val file = File(dir, "motion_${System.currentTimeMillis()}.csv")
-        BufferedWriter(FileWriter(file)).apply { write("timestamp_ms,sensor,x,y,z\n") }
-    } catch (error: Exception) {
-        Log.w(TAG, "Failed to open motion log file", error)
-        null
+    /**
+     * A fresh file per session (unlike `captures.csv`, which one file spans the app's whole
+     * lifetime — see [CaptureLogWriter]), so this always inserts a new MediaStore row rather than
+     * needing to resolve an existing one.
+     */
+    private fun openWriter(): BufferedWriter? {
+        val fileName = "motion_${fileTimestampNow()}.csv"
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, "text/csv")
+                    put(MediaStore.Downloads.RELATIVE_PATH, SensorMediaRoot)
+                }
+                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: return null
+                val stream = context.contentResolver.openOutputStream(uri) ?: return null
+                BufferedWriter(OutputStreamWriter(stream)).apply { write("timestamp_ms,sensor,x,y,z\n") }
+            } else {
+                val dir = File(context.getExternalFilesDir(null), SensorMediaRoot).apply { mkdirs() }
+                val file = File(dir, fileName)
+                BufferedWriter(FileWriter(file)).apply { write("timestamp_ms,sensor,x,y,z\n") }
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Failed to open motion log file", error)
+            null
+        }
     }
 
     private companion object {

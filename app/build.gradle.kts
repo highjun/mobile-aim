@@ -7,6 +7,10 @@ plugins {
     // 4.x needs AGP 9 / Gradle 9 — this project is still on AGP 8.5.2 / Gradle 8.7, so pinned to
     // the last 3.x release instead.
     id("com.github.triplet.play") version "3.13.0"
+    // Provides the `record*Roborazzi` task that AimOverlayScreenshotTest needs — plain `test` runs
+    // treat captureRoboImage() calls as a no-op (by design, to avoid silently writing files during
+    // normal CI test runs).
+    id("io.github.takahirom.roborazzi") version "1.24.0"
 }
 
 // Instrumented tests (and any emulator run) need the emulator's x86_64 native libs, which we
@@ -95,6 +99,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // Robolectric needs resource merging visible on the unit-test classpath (Material3 pulls
+    // system attrs) to render Compose content headlessly — see AimOverlayScreenshotTest, a
+    // device-free way to eyeball UI changes without an emulator.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 // Gradle Play Publisher — uploads a signed release bundle straight to the Internal testing track.
@@ -134,7 +147,19 @@ dependencies {
     // here in favor of the more battle-tested 4.x line.
     implementation("org.opencv:opencv:4.11.0")
     testImplementation("junit:junit:4.13.2")
+    // Headless Compose screenshot rendering for AimOverlayScreenshotTest — no emulator/device
+    // needed, runs as a plain JVM unit test. Plain compose-ui-test's captureToImage() times out
+    // under Robolectric's paused main Looper (forceRedraw never gets pumped); Roborazzi's
+    // captureRoboImage() is built specifically to work around that.
+    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    // Pinned to 1.24.0, not latest — newer releases are compiled with Kotlin 2.x metadata,
+    // incompatible with this project's Kotlin 1.9.24.
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.24.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.24.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
