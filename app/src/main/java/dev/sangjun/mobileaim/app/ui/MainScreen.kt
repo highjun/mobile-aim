@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Build
+import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
@@ -37,13 +38,19 @@ import dev.sangjun.mobileaim.utils.fileTimestampNow
 import java.io.File
 
 /**
- * Everything MobileAim writes — photos, videos, and (see [dev.sangjun.mobileaim.logging]) sensor
- * CSVs — nests under this one root, `MobileAim/{images,videos,sensors}`, so there's a single place
- * to go looking regardless of which button produced the file. On API 29+ this is a custom top-level
- * MediaStore folder (the same pattern apps like WhatsApp use for their own media, e.g.
- * `WhatsApp/Media/WhatsApp Images`) rather than nesting under the standard `Pictures/`/`Movies/`
- * roots — trade-off: it may not appear in a gallery app's main camera-roll feed the way
- * `Pictures/...` would, but any file manager and this app itself can always find it at one path.
+ * `MobileAim`, the shared subfolder name every piece of MobileAim output lands under. Where that
+ * subfolder actually lives differs by media type on API 29+, though, because of a MediaStore
+ * restriction we don't control: `MediaStore.Images`/`MediaStore.Video` only accept
+ * [Environment.DIRECTORY_PICTURES]/[Environment.DIRECTORY_MOVIES] (or DCIM) as the *top-level*
+ * `RELATIVE_PATH` segment — anything else throws `IllegalArgumentException: Primary directory
+ * MobileAim not allowed for content://media/external/...` at save time, which CameraX swallows into
+ * its error callback, so the previous "one unified `MobileAim/{images,videos,sensors}` root" attempt
+ * silently failed to save every photo/video (no crash, no toast, no file). So: photos land in
+ * `Pictures/$MediaRoot`, videos in `Movies/$MediaRoot` — both required top-level roots, with
+ * `MediaRoot` as the sub-brand folder inside them. Sensor CSVs (see
+ * [dev.sangjun.mobileaim.logging.CaptureLogWriter]/[dev.sangjun.mobileaim.logging.SensorMotionLogger])
+ * go through `MediaStore.Downloads` instead, which has no such restriction, so they keep the fully
+ * custom `MobileAim/sensors` path.
  */
 private const val MediaRoot = "MobileAim"
 
@@ -129,8 +136,9 @@ private fun Context.findActivity(): Activity? {
  * shared id is how a photo and its sensor/pose snapshot get matched up after the fact. Only calls
  * [onSaved] once the file has actually landed, so a snapshot never references a missing photo.
  *
- * Lands in the shared `MobileAim/images` collection (via MediaStore) on API 29+ — see [MediaRoot].
- * On older API levels MediaStore's `RELATIVE_PATH` isn't supported, so it falls back to the same
+ * Lands in the shared `Pictures/$MediaRoot` collection (via MediaStore) on API 29+ — see
+ * [MediaRoot]'s doc for why it's `Pictures/` and not a fully custom top-level folder.
+ * On older API levels MediaStore's `RELATIVE_PATH` isn't supported, so it falls back to a
  * `MobileAim/images` subfolder inside the app's own external-files directory. Either way, a toast
  * reports exactly where it landed once the save completes.
  */
@@ -144,14 +152,14 @@ private fun capturePhoto(context: Context, imageCapture: ImageCapture?, onSaved:
         val contentValues = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "$MediaRoot/images")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$MediaRoot")
         }
         outputOptions = ImageCapture.OutputFileOptions.Builder(
             context.contentResolver,
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             contentValues,
         ).build()
-        displayLocation = "$MediaRoot/images/$fileName"
+        displayLocation = "${Environment.DIRECTORY_PICTURES}/$MediaRoot/$fileName"
     } else {
         val dir = File(context.getExternalFilesDir(null), "$MediaRoot/images").apply { mkdirs() }
         outputOptions = ImageCapture.OutputFileOptions.Builder(File(dir, fileName)).build()
@@ -168,6 +176,7 @@ private fun capturePhoto(context: Context, imageCapture: ImageCapture?, onSaved:
 
             override fun onError(exception: ImageCaptureException) {
                 Log.w("MobileAimCapture", "Failed to save capture photo", exception)
+                Toast.makeText(context, "사진 저장 실패: ${exception.message}", Toast.LENGTH_LONG).show()
             }
         },
     )
@@ -178,7 +187,7 @@ private fun capturePhoto(context: Context, imageCapture: ImageCapture?, onSaved:
  * the reticle stays put during a shake test, and skipping audio avoids needing RECORD_AUDIO) as
  * `video_<timestamp>.mp4`.
  *
- * Lands in the shared `MobileAim/videos` collection (via MediaStore) on API 29+, same rationale
+ * Lands in the shared `Movies/$MediaRoot` collection (via MediaStore) on API 29+, same rationale
  * and fallback as [capturePhoto]. The session's raw IMU CSV logs land alongside it under
  * `MobileAim/sensors` (see [dev.sangjun.mobileaim.logging.SensorMotionLogger]/[dev.sangjun.mobileaim.logging.CaptureLogWriter]) — the completion toast points there too.
  */
@@ -189,13 +198,13 @@ private fun startVideoRecording(context: Context, videoCapture: VideoCapture<Rec
         val contentValues = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, "$MediaRoot/videos")
+            put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/$MediaRoot")
         }
         val outputOptions = MediaStoreOutputOptions
             .Builder(context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
             .setContentValues(contentValues)
             .build()
-        videoCapture.output.prepareRecording(context, outputOptions) to "$MediaRoot/videos/$fileName"
+        videoCapture.output.prepareRecording(context, outputOptions) to "${Environment.DIRECTORY_MOVIES}/$MediaRoot/$fileName"
     } else {
         val dir = File(context.getExternalFilesDir(null), "$MediaRoot/videos").apply { mkdirs() }
         val outputOptions = FileOutputOptions.Builder(File(dir, fileName)).build()
@@ -206,6 +215,7 @@ private fun startVideoRecording(context: Context, videoCapture: VideoCapture<Rec
         if (event is VideoRecordEvent.Finalize) {
             if (event.hasError()) {
                 Log.w("MobileAimCapture", "Video recording failed: ${event.error}", event.cause)
+                Toast.makeText(context, "동영상 저장 실패: ${event.cause?.message ?: "code ${event.error}"}", Toast.LENGTH_LONG).show()
             } else {
                 Toast.makeText(
                     context,
