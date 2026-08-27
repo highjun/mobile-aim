@@ -1,30 +1,65 @@
 package dev.sangjun.mobileaim.aim
 
-import dev.sangjun.mobileaim.app.camera.CameraFov
-import kotlin.math.atan
-import kotlin.math.tan
+import kotlin.math.sqrt
 
 private const val GravityMps2 = 9.8f
 
 /**
- * How far below the laser-straight-line zero a slow projectile's reticle should sit, as a
- * fraction of the camera preview's height — the same role a BDC reticle's holdover marks play for
- * a real firearm, just computed instead of pre-printed. A laser bore-sighter only shows where the
- * barrel points in a straight line; an actual projectile drops under gravity the whole time it's
- * in flight, so at low enough velocity (see [dev.sangjun.mobileaim.app.settings.MarkerSettings])
- * that drop stops being negligible even over a few meters.
- *
- * Pure projectile-motion approximation (no drag) — good enough given [velocityMps] is itself a
- * user-entered estimate rather than a chronographed value; any systematic gap between this and
- * reality (drag, hop-up, the camera FOV approximation) is expected to be absorbed by adjusting
- * that velocity empirically after a confirmation shot, the same way a real scope's zero gets
- * fine-tuned after dialing in calculated clicks.
+ * The real K2C1 rifle (5.56×45mm NATO) — seed value for the "화기" default
+ * [dev.sangjun.mobileaim.app.settings.AimProfile]. ~920 m/s is a typical published muzzle
+ * velocity for this class of 5.56mm rifle.
  */
-fun computeDropOffsetFraction(distanceMeters: Float, velocityMps: Float, fov: CameraFov): Float {
-    if (distanceMeters <= 0f || velocityMps <= 0f) return 0f
-    val timeOfFlightSeconds = distanceMeters / velocityMps
-    val dropMeters = 0.5f * GravityMps2 * timeOfFlightSeconds * timeOfFlightSeconds
-    val dropAngleRad = atan(dropMeters / distanceMeters)
-    val dropPx = fov.focalLengthYPx * tan(dropAngleRad)
-    return dropPx / fov.referenceHeightPx
+const val K2C1RifleMuzzleVelocityMps = 920f
+
+/**
+ * Academy Science's K2C1 replica (6mm BB, spring/manual action) — seed value for the "수동건"
+ * default [dev.sangjun.mobileaim.app.settings.AimProfile]. ~200 fps is a rough estimate for this
+ * class of toy gun. Any gap between this and a specific gun's real velocity is expected to be
+ * absorbed by comparing against a real shot and adjusting the profile's muzzle velocity field, the
+ * same way a real scope's calculated zero gets fine-tuned after a confirmation shot.
+ */
+const val K2C1ReplicaMuzzleVelocityMps = 61f
+
+/**
+ * The Maximum Point Blank Range band — the span of distances (inclusive, meters) over which a
+ * projectile zeroed at [zeroDistanceM] stays within [targetRadiusCm] of the point of aim without
+ * any holdover. This app's screen has no room for a per-distance BDC ladder (~1.8 MOA per pixel —
+ * see docs/선행기술-도트사이트.md's K2C1 calculation, whose 50–200m engagement range spans under
+ * 1px total), so a shooter reads one band instead of a per-distance readout.
+ *
+ * Model: the bore fires [hobCm] below the line of sight, at just enough upward angle `θ` that the
+ * trajectory crosses the line of sight exactly at [zeroDistanceM] (a real, sighted-in zero — not
+ * the simplified "symmetric arc" shortcut). Position relative to the line of sight at distance `d`
+ * is `e(d) = θ·d − k·d² − HOB` where `k = g / (2·v²)`; the band is where `e(d)` stays within
+ * `±targetRadiusCm`.
+ *
+ * Returns `null` if the trajectory's peak rise exceeds [targetRadiusCm] — the valid region would
+ * then split into two disjoint distance bands, which doesn't fit a single "X–Ym" readout; the
+ * caller should omit the band line rather than show a misleading single range. Also `null` for any
+ * non-positive [zeroDistanceM]/[velocityMps]/[targetRadiusCm], or negative [hobCm].
+ */
+fun computeMpbrBand(zeroDistanceM: Float, velocityMps: Float, hobCm: Float, targetRadiusCm: Float): ClosedRange<Float>? {
+    if (zeroDistanceM <= 0f || velocityMps <= 0f || targetRadiusCm <= 0f || hobCm < 0f) return null
+
+    val hobM = hobCm / 100f
+    val targetRadiusM = targetRadiusCm / 100f
+    val k = GravityMps2 / (2f * velocityMps * velocityMps)
+    val theta = (hobM + k * zeroDistanceM * zeroDistanceM) / zeroDistanceM
+
+    val peakDistance = theta / (2f * k)
+    val peakOffset = theta * peakDistance - k * peakDistance * peakDistance - hobM
+    if (peakOffset > targetRadiusM) return null
+
+    // Roots of e(d) = -targetRadiusM, i.e. k*d^2 - theta*d + (hobM - targetRadiusM) = 0.
+    val c = hobM - targetRadiusM
+    val discriminant = theta * theta - 4f * k * c
+    if (discriminant < 0f) return null
+    val sqrtDiscriminant = sqrt(discriminant)
+    val smallerRoot = (theta - sqrtDiscriminant) / (2f * k)
+    val largerRoot = (theta + sqrtDiscriminant) / (2f * k)
+
+    // e(0) = -hobM is already inside [-R, R] whenever hobM <= targetRadiusM, so the band starts
+    // at 0 rather than at the (then-negative, non-physical) smaller root.
+    val near = if (hobM <= targetRadiusM) 0f else smallerRoot
+    return near..largerRoot
 }

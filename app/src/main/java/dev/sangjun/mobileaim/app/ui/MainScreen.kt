@@ -68,6 +68,7 @@ fun MainScreen(
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder> -> videoCapture = capture } }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
+    var isProfileSheetOpen by remember { mutableStateOf(false) }
     val uiState by aimViewModel.uiState.collectAsState()
 
     // Force the manual brightness onto the host Activity's window; setting an explicit 0..1 value
@@ -116,9 +117,18 @@ fun MainScreen(
             isFocusMode = isFocusMode,
             onToggleFocusMode = onToggleFocusMode,
             onBrightnessChange = aimViewModel::onBrightnessChange,
-            onToggleAimMode = aimViewModel::onToggleAimMode,
-            onManualGunDistanceChange = aimViewModel::onManualGunDistanceChange,
-            onManualGunVelocityChange = aimViewModel::onManualGunVelocityChange,
+            isProfileSheetOpen = isProfileSheetOpen,
+            onOpenProfileSheet = { isProfileSheetOpen = true },
+            onDismissProfileSheet = { isProfileSheetOpen = false },
+            onSelectProfile = aimViewModel::onSelectProfile,
+            onAddProfile = aimViewModel::onAddProfile,
+            onRenameProfile = aimViewModel::onRenameProfile,
+            onDeleteProfile = aimViewModel::onDeleteProfile,
+            onUpdateProfileBallistics = aimViewModel::onUpdateProfileBallistics,
+            onCreepUp = aimViewModel::onCreepUp,
+            onCreepDown = aimViewModel::onCreepDown,
+            onCreepLeft = aimViewModel::onCreepLeft,
+            onCreepRight = aimViewModel::onCreepRight,
             modifier = Modifier.fillMaxSize(),
         )
     }

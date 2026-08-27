@@ -10,7 +10,9 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
-import dev.sangjun.mobileaim.app.settings.AimMode
+import dev.sangjun.mobileaim.aim.computeMpbrBand
+import dev.sangjun.mobileaim.app.settings.DefaultAimProfiles
+import dev.sangjun.mobileaim.app.settings.FirearmProfileId
 import dev.sangjun.mobileaim.app.ui.theme.MobileAimTheme
 import org.junit.Rule
 import org.junit.Test
@@ -27,10 +29,11 @@ import org.robolectric.annotation.GraphicsMode
  * [captureRoboImage] rather than plain compose-ui-test's `captureToImage()`, which times out
  * waiting for a redraw under Robolectric's paused main Looper.
  *
- * Split from [AimOverlayManualGunScreenshotTest] into its own class rather than a second `@Test`
- * here — Robolectric gives each test *class* a fresh `Application`, but within one class Koin's
- * `GlobalContext` (a JVM static) survives across `@Test` methods, so a second
- * `MobileAimApplication.onCreate()` call in the same class throws `KoinAppAlreadyStartedException`.
+ * Split from [AimOverlayManualGunScreenshotTest]/[AimOverlayZeroingScreenshotTest] into separate
+ * classes rather than more `@Test`s here — Robolectric gives each test *class* a fresh
+ * `Application`, but within one class Koin's `GlobalContext` (a JVM static) survives across
+ * `@Test` methods, so a second `MobileAimApplication.onCreate()` call in the same class throws
+ * `KoinAppAlreadyStartedException`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -41,16 +44,27 @@ class AimOverlayScreenshotTest {
 
     @Test
     fun captureAimOverlayAppearance() {
+        val profile = DefaultAimProfiles.first { it.id == FirearmProfileId }
         composeRule.setContent {
             MobileAimTheme {
                 Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
                     AimOverlay(
                         uiState = AimUiState(
                             reticleXFraction = 0.5f,
-                            reticleYFraction = 0.5f,
+                            reticleYFraction = 0.4f,
+                            effectiveReticleXFraction = 0.5f,
+                            effectiveReticleYFraction = 0.4f,
                             isLoggingActive = false,
                             brightness = 0.8f,
-                            aimMode = AimMode.FIREARM,
+                            profiles = DefaultAimProfiles,
+                            activeProfileId = profile.id,
+                            zeroDistanceM = profile.zeroDistanceM,
+                            mpbrBandM = computeMpbrBand(
+                                zeroDistanceM = profile.zeroDistanceM,
+                                velocityMps = profile.muzzleVelocityMps,
+                                hobCm = profile.hobCm,
+                                targetRadiusCm = profile.targetRadiusCm,
+                            ),
                         ),
                         onReticleDrag = { _, _ -> },
                         onToggleLogging = {},
@@ -58,9 +72,18 @@ class AimOverlayScreenshotTest {
                         isFocusMode = false,
                         onToggleFocusMode = {},
                         onBrightnessChange = {},
-                        onToggleAimMode = {},
-                        onManualGunDistanceChange = {},
-                        onManualGunVelocityChange = {},
+                        isProfileSheetOpen = false,
+                        onOpenProfileSheet = {},
+                        onDismissProfileSheet = {},
+                        onSelectProfile = {},
+                        onAddProfile = { "" },
+                        onRenameProfile = { _, _ -> },
+                        onDeleteProfile = {},
+                        onUpdateProfileBallistics = { _, _, _, _, _ -> },
+                        onCreepUp = {},
+                        onCreepDown = {},
+                        onCreepLeft = {},
+                        onCreepRight = {},
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
