@@ -71,22 +71,26 @@ private const val CreepRepeatIntervalMillis = 100L
 
 /**
  * v1: no vision, no pose estimation. Each [dev.sangjun.mobileaim.app.settings.AimProfile] carries
- * its own bore-sighted zero the user drags onto their laser bore-sighter (see [onReticleDrag]),
- * plus a click-based fine adjustment dialed in after a confirmation shot (see [CreepPad]). Those
- * are two separate header buttons/modes, not one toggle, because they show a different reticle:
+ * its own bore-sighted zero the user drags (or nudges — see [onBoresightUp]) onto their laser
+ * bore-sighter, plus a click-based fine adjustment dialed in after a confirmation shot (see
+ * [CreepPad]). Those are two separate header buttons/modes, not one toggle, because they show a
+ * different reticle:
  *
- * - "영점" ([isBoresightingMode]): dragging moves the raw zero — held completely fixed otherwise,
- *   so an incidental touch mid-shake-test can't nudge it. While the drag is active the reticle is a
- *   plain translucent dot at the raw zero (easier to line up precisely with an actual laser dot than
- *   the crosshair's shape is); once the finger lifts, the aiming crosshair is drawn on top of that
- *   same dot, centered on it, so the shooter can confirm exactly where the crosshair will actually
- *   sit before leaving this mode. Dragging also resets any click adjustment from a prior "미세조정"
+ * - "정렬" ([isBoresightingMode], boresighting): dragging moves the raw zero — held completely
+ *   fixed otherwise, so an incidental touch mid-shake-test can't nudge it. The reticle is always a
+ *   plain translucent dot at the raw zero (easier to line up precisely with an actual laser dot
+ *   than the crosshair's shape is). The [CreepPad] arrow pad is also shown here (wired to
+ *   [onBoresightUp]/[onBoresightDown]/[onBoresightLeft]/[onBoresightRight] instead of the creep
+ *   callbacks) as a finer-grained alternative to dragging — it nudges the same raw zero by one
+ *   click's worth of screen distance per press, without touching
+ *   [AimUiState.elevationClicks]/[AimUiState.windageClicks] at all, so nothing to read out. Moving
+ *   the raw zero, whether by drag or by this pad, resets any click adjustment from a prior "영점"
  *   session back to 0 (see [dev.sangjun.mobileaim.app.settings.ISettingsRepository.updateReticlePosition])
  *   — it was dialed in relative to the zero that just moved, so keeping it would silently offset
- *   the crosshair away from wherever this drag just placed the dot.
- * - "미세조정" ([isCreepMode]): shows the normal aiming crosshair (below) so the creep pad's arrows
- *   have something to visibly move — a merged mode would either hide the crosshair the pad is
- *   supposed to move, or let a drag land mid-creep and silently overwrite the zero.
+ *   the crosshair away from wherever the zero just landed.
+ * - "영점" ([isCreepMode], zeroing): shows the normal aiming crosshair (below) so the creep pad's
+ *   arrows have something to visibly move — a merged mode would either hide the crosshair the pad
+ *   is supposed to move, or let a drag land mid-creep and silently overwrite the zero.
  *
  * The two are mutually exclusive (turning one on turns the other off) since a translucent dot has
  * nothing for creep clicks to visibly move, and the crosshair isn't meant to be dragged directly.
@@ -125,6 +129,10 @@ fun AimOverlay(
     onCreepDown: () -> Unit,
     onCreepLeft: () -> Unit,
     onCreepRight: () -> Unit,
+    onBoresightUp: () -> Unit,
+    onBoresightDown: () -> Unit,
+    onBoresightLeft: () -> Unit,
+    onBoresightRight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Mutually exclusive: dragging edits the raw zero the crosshair isn't even drawn against
@@ -132,19 +140,12 @@ fun AimOverlay(
     // crosshair move — so only one of these is ever on at a time.
     var isBoresightingMode by remember { mutableStateOf(false) }
     var isCreepMode by remember { mutableStateOf(false) }
-    // While a boresighting drag is in flight, the crosshair is hidden so the plain dot stays easy
-    // to line up with an actual laser dot — see the mode's KDoc above.
-    var isZeroDragActive by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier.then(
             if (isBoresightingMode) {
                 Modifier.pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { isZeroDragActive = true },
-                        onDragEnd = { isZeroDragActive = false },
-                        onDragCancel = { isZeroDragActive = false },
-                    ) { change, _ ->
+                    detectDragGestures { change, _ ->
                         onReticleDrag(change.position.x / size.width, change.position.y / size.height)
                     }
                 }
@@ -157,9 +158,6 @@ fun AimOverlay(
             if (isBoresightingMode) {
                 val zeroCenter = Offset(uiState.reticleXFraction * size.width, uiState.reticleYFraction * size.height)
                 drawZeroingDot(zeroCenter)
-                if (!isZeroDragActive) {
-                    drawCrosshair(zeroCenter)
-                }
             } else {
                 val effectiveCenter = Offset(
                     uiState.effectiveReticleXFraction * size.width,
@@ -169,15 +167,15 @@ fun AimOverlay(
             }
         }
 
-        if (isCreepMode) {
+        if (isBoresightingMode || isCreepMode) {
             CreepPad(
-                elevationClicks = uiState.elevationClicks,
-                windageClicks = uiState.windageClicks,
+                elevationClicks = if (isCreepMode) uiState.elevationClicks else 0,
+                windageClicks = if (isCreepMode) uiState.windageClicks else 0,
                 isEnabled = uiState.isCreepAvailable,
-                onCreepUp = onCreepUp,
-                onCreepDown = onCreepDown,
-                onCreepLeft = onCreepLeft,
-                onCreepRight = onCreepRight,
+                onCreepUp = if (isCreepMode) onCreepUp else onBoresightUp,
+                onCreepDown = if (isCreepMode) onCreepDown else onBoresightDown,
+                onCreepLeft = if (isCreepMode) onCreepLeft else onBoresightLeft,
+                onCreepRight = if (isCreepMode) onCreepRight else onBoresightRight,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp),
@@ -224,11 +222,11 @@ fun AimOverlay(
 
 /**
  * A full-width translucent bar pinned to the top edge — the only UI besides the reticle and (while
- * in creep mode) the creep pad. Aiming controls sit on the left as labeled chips (icon-only
- * buttons are hard to read at a glance — a text label under each icon removes the guesswork); the
- * manual brightness slider sits on the right (there is plenty of room in landscape).
+ * in either boresighting or creep mode) the creep pad. Aiming controls sit on the left as labeled
+ * chips (icon-only buttons are hard to read at a glance — a text label under each icon removes the
+ * guesswork); the manual brightness slider sits on the right (there is plenty of room in landscape).
  *
- * "영점"([isBoresightingMode]) and "미세조정"([isCreepMode]) are separate buttons rather than one
+ * "정렬"([isBoresightingMode]) and "영점"([isCreepMode]) are separate buttons rather than one
  * toggle — they're different steps of the zeroing procedure (see [dev.sangjun.mobileaim.aim.AimOverlay]'s
  * KDoc) with different reticle displays, and mixing them meant the crosshair the creep pad is
  * supposed to move wasn't even drawn while the pad was visible.
@@ -269,13 +267,13 @@ private fun Header(
             ) {
                 LabeledHeaderButton(
                     icon = Icons.Filled.GpsFixed,
-                    label = "영점",
+                    label = "정렬",
                     active = isBoresightingMode,
                     onClick = onToggleBoresightingMode,
                 )
                 LabeledHeaderButton(
                     icon = Icons.Filled.ControlCamera,
-                    label = "미세조정",
+                    label = "영점",
                     active = isCreepMode,
                     onClick = onToggleCreepMode,
                 )
@@ -312,7 +310,7 @@ private fun Header(
 
 /**
  * Plain text (no button chip) naming the active profile — opens [ProfileSheet] on tap. The old
- * chip-styled button here looked just like another mode toggle (see "영점"/"미세조정" above),
+ * chip-styled button here looked just like another mode toggle (see "정렬"/"영점" above),
  * which made it easy to miss as the actual entry point into profile management; the trailing
  * [Icons.Filled.ArrowDropDown] is the only affordance hinting it's tappable.
  */
@@ -434,13 +432,17 @@ private fun BrightnessCapsuleSlider(
 }
 
 /**
- * A vertical D-pad of four arrow buttons for dialing in click adjustments after a confirmation
- * shot — only shown while [dev.sangjun.mobileaim.aim.AimOverlay]'s "미세조정" creep mode is on,
- * where the aiming crosshair (not the boresighting dot) stays visible so there's something to
- * watch move. Each arrow moves the reticle itself in that direction (not a turret-dial convention)
- * — pressing "위" makes the effective reticle move up, matching what the shooter sees happen on
- * screen. A readout above the pad shows the net click count per axis, omitted for an axis that's
- * still at zero.
+ * A vertical D-pad of four arrow buttons, shown in both "정렬"(boresighting) and "영점"(zeroing)
+ * mode with different backing actions:
+ * - In "영점" mode, dials in click adjustments after a confirmation shot, moving the *effective*
+ *   reticle (the aiming crosshair stays visible so there's something to watch move) — a readout
+ *   above the pad shows the net click count per axis, omitted for an axis that's still at zero.
+ * - In "정렬" mode, nudges the *raw* zero by one click's worth of screen distance per press
+ *   instead — a finer-grained alternative to dragging — without touching the click counters at
+ *   all, so there's nothing to read out (see [dev.sangjun.mobileaim.aim.AimOverlay]'s KDoc).
+ *
+ * Either way, each arrow moves the reticle itself in that direction (not a turret-dial convention)
+ * — pressing "위" makes it move up, matching what the shooter sees happen on screen.
  */
 @Composable
 private fun CreepPad(
@@ -564,9 +566,9 @@ private fun DrawScope.drawCrosshair(center: Offset) {
 }
 
 /**
- * In boresighting mode ("영점"), a plain translucent dot (easier to overlay precisely on a real
- * laser dot than the crosshair's shape is) drawn under the crosshair while the drag is idle — see
- * [AimOverlay]'s KDoc.
+ * In boresighting mode ("정렬"), the reticle is always this plain translucent dot instead of the
+ * aiming crosshair — easier to overlay precisely on a real laser dot than the crosshair's shape is.
+ * See [AimOverlay]'s KDoc.
  */
 private fun DrawScope.drawZeroingDot(center: Offset) {
     drawCircle(color = ReticleDotColor.copy(alpha = 0.5f), radius = 20.dp.toPx(), center = center)

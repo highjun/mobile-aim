@@ -129,6 +129,10 @@ fun MainScreen(
             onCreepDown = aimViewModel::onCreepDown,
             onCreepLeft = aimViewModel::onCreepLeft,
             onCreepRight = aimViewModel::onCreepRight,
+            onBoresightUp = aimViewModel::onBoresightUp,
+            onBoresightDown = aimViewModel::onBoresightDown,
+            onBoresightLeft = aimViewModel::onBoresightLeft,
+            onBoresightRight = aimViewModel::onBoresightRight,
             modifier = Modifier.fillMaxSize(),
         )
     }

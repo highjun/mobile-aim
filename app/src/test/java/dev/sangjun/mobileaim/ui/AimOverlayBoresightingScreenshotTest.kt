@@ -24,10 +24,11 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * `isBoresightingMode` is internal state hoisted inside [AimOverlay] itself (not a parameter), so
- * unlike the plain-aiming screenshot tests this one has to click the "영점" header button to reach
+ * unlike the plain-aiming screenshot tests this one has to click the "정렬" header button to reach
  * it, rather than just constructing an [AimUiState]. See [AimOverlayScreenshotTest] for why this
  * is its own test class rather than a shared one, and [AimOverlayCreepScreenshotTest] for the
- * separate "미세조정" mode this reticle drag mode doesn't show the creep pad in.
+ * separate "영점" mode whose creep pad moves the effective reticle (and shows a click readout)
+ * instead of nudging the raw zero.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -70,12 +71,16 @@ class AimOverlayBoresightingScreenshotTest {
                         onCreepDown = {},
                         onCreepLeft = {},
                         onCreepRight = {},
+                        onBoresightUp = {},
+                        onBoresightDown = {},
+                        onBoresightLeft = {},
+                        onBoresightRight = {},
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
         }
-        composeRule.onNodeWithText("영점").performClick()
+        composeRule.onNodeWithText("정렬").performClick()
         composeRule.waitForIdle()
 
         composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot_boresighting.png")

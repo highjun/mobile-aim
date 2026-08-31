@@ -84,6 +84,44 @@ class AimViewModel(
     /** Moves the reticle right by one click. */
     fun onCreepRight() = settingsRepository.updateClicks(elevationDelta = 0, windageDelta = 1)
 
+    /**
+     * Nudges the raw zero itself by [dxFraction]/[dyFraction] — for boresighting's arrow pad, an
+     * alternative to dragging for finer control. Goes through [ISettingsRepository.updateReticlePosition],
+     * the same path [onReticleDrag] uses, so it resets [AimUiState.elevationClicks]/[AimUiState.windageClicks]
+     * exactly like a drag would (they were dialed in relative to the zero this just moved).
+     */
+    private fun nudgeRawZero(dxFraction: Float, dyFraction: Float) {
+        val profile = settingsRepository.settings.value.activeProfile
+        settingsRepository.updateReticlePosition(
+            (profile.reticleXFraction + dxFraction).coerceIn(0f, 1f),
+            (profile.reticleYFraction + dyFraction).coerceIn(0f, 1f),
+        )
+    }
+
+    /** Nudges the raw zero up by one click's worth of screen distance — never touches the click counters (see [nudgeRawZero]). */
+    fun onBoresightUp() {
+        val fov = cameraFovFlow.value ?: return
+        nudgeRawZero(dxFraction = 0f, dyFraction = -clicksToFraction(1, fov.focalLengthYPx, fov.referenceHeightPx))
+    }
+
+    /** Nudges the raw zero down by one click's worth of screen distance. */
+    fun onBoresightDown() {
+        val fov = cameraFovFlow.value ?: return
+        nudgeRawZero(dxFraction = 0f, dyFraction = clicksToFraction(1, fov.focalLengthYPx, fov.referenceHeightPx))
+    }
+
+    /** Nudges the raw zero left by one click's worth of screen distance. */
+    fun onBoresightLeft() {
+        val fov = cameraFovFlow.value ?: return
+        nudgeRawZero(dxFraction = -clicksToFraction(1, fov.focalLengthYPx, fov.referenceWidthPx), dyFraction = 0f)
+    }
+
+    /** Nudges the raw zero right by one click's worth of screen distance. */
+    fun onBoresightRight() {
+        val fov = cameraFovFlow.value ?: return
+        nudgeRawZero(dxFraction = clicksToFraction(1, fov.focalLengthYPx, fov.referenceWidthPx), dyFraction = 0f)
+    }
+
     /** Switches which saved profile is active. */
     fun onSelectProfile(profileId: String) = settingsRepository.setActiveProfile(profileId)
 

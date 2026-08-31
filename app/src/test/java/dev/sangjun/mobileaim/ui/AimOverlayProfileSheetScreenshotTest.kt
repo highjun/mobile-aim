@@ -64,6 +64,10 @@ class AimOverlayProfileSheetScreenshotTest {
                         onCreepDown = {},
                         onCreepLeft = {},
                         onCreepRight = {},
+                        onBoresightUp = {},
+                        onBoresightDown = {},
+                        onBoresightLeft = {},
+                        onBoresightRight = {},
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
