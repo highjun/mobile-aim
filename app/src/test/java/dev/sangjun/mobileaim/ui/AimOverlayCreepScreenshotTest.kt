@@ -12,7 +12,6 @@ import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
-import dev.sangjun.mobileaim.aim.computeMpbrBand
 import dev.sangjun.mobileaim.app.settings.DefaultAimProfiles
 import dev.sangjun.mobileaim.app.settings.FirearmProfileId
 import dev.sangjun.mobileaim.app.ui.theme.MobileAimTheme
@@ -55,13 +54,6 @@ class AimOverlayCreepScreenshotTest {
                             brightness = 0.8f,
                             profiles = DefaultAimProfiles,
                             activeProfileId = profile.id,
-                            zeroDistanceM = profile.zeroDistanceM,
-                            mpbrBandM = computeMpbrBand(
-                                zeroDistanceM = profile.zeroDistanceM,
-                                velocityMps = profile.muzzleVelocityMps,
-                                hobCm = profile.hobCm,
-                                targetRadiusCm = profile.targetRadiusCm,
-                            ),
                             isCreepAvailable = true,
                         ),
                         onReticleDrag = { _, _ -> },

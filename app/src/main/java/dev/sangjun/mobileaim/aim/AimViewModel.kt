@@ -59,13 +59,15 @@ class AimViewModel(
             brightness = settings.brightness,
             profiles = settings.profiles,
             activeProfileId = settings.activeProfileId,
-            zeroDistanceM = profile.zeroDistanceM,
-            mpbrBandM = computeMpbrBand(profile.zeroDistanceM, profile.muzzleVelocityMps, profile.hobCm, profile.targetRadiusCm),
             isCreepAvailable = cameraFov != null,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
 
-    /** [xFraction]/[yFraction] are 0..1 across the displayed camera preview. Edits the active profile's raw zero. */
+    /**
+     * [xFraction]/[yFraction] are 0..1 across the displayed camera preview. Edits the active
+     * profile's raw zero, and resets its click adjustments to 0 in the same update — see
+     * [ISettingsRepository.updateReticlePosition].
+     */
     fun onReticleDrag(xFraction: Float, yFraction: Float) {
         settingsRepository.updateReticlePosition(xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
     }

@@ -15,9 +15,6 @@ import dev.sangjun.mobileaim.app.settings.DefaultAimProfiles
  * [AimViewModel.logCaptureSnapshot] records. Equals the raw zero whenever [isCreepAvailable] is
  * false (no [dev.sangjun.mobileaim.app.camera.CameraFov] yet to convert clicks into a screen
  * fraction with).
- *
- * [mpbrBandM]: the active profile's valid-range band in meters (see [computeMpbrBand]), or `null`
- * if its trajectory can't be reduced to a single band — [AimOverlay] omits the band line then.
  */
 data class AimUiState(
     val reticleXFraction: Float = 0.5f,
@@ -32,8 +29,6 @@ data class AimUiState(
     val brightness: Float = 0.8f,
     val profiles: List<AimProfile> = DefaultAimProfiles,
     val activeProfileId: String = DefaultAimProfiles.first().id,
-    val zeroDistanceM: Float = DefaultAimProfiles.first().zeroDistanceM,
-    val mpbrBandM: ClosedRange<Float>? = null,
     /** Whether a [dev.sangjun.mobileaim.app.camera.CameraFov] is available yet — gates the creep pad's arrow buttons (see [AimOverlay]) so a press doesn't silently do nothing. */
     val isCreepAvailable: Boolean = false,
 ) {

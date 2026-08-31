@@ -55,14 +55,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /** The precise point of aim stays red — matches the ladder/label color used throughout this file. */
@@ -82,9 +76,14 @@ private const val CreepRepeatIntervalMillis = 100L
  * are two separate header buttons/modes, not one toggle, because they show a different reticle:
  *
  * - "영점" ([isBoresightingMode]): dragging moves the raw zero — held completely fixed otherwise,
- *   so an incidental touch mid-shake-test can't nudge it. The reticle switches to a plain
- *   translucent dot at the raw zero (easier to line up precisely with an actual laser dot than the
- *   crosshair's shape is).
+ *   so an incidental touch mid-shake-test can't nudge it. While the drag is active the reticle is a
+ *   plain translucent dot at the raw zero (easier to line up precisely with an actual laser dot than
+ *   the crosshair's shape is); once the finger lifts, the aiming crosshair is drawn on top of that
+ *   same dot, centered on it, so the shooter can confirm exactly where the crosshair will actually
+ *   sit before leaving this mode. Dragging also resets any click adjustment from a prior "미세조정"
+ *   session back to 0 (see [dev.sangjun.mobileaim.app.settings.ISettingsRepository.updateReticlePosition])
+ *   — it was dialed in relative to the zero that just moved, so keeping it would silently offset
+ *   the crosshair away from wherever this drag just placed the dot.
  * - "미세조정" ([isCreepMode]): shows the normal aiming crosshair (below) so the creep pad's arrows
  *   have something to visibly move — a merged mode would either hide the crosshair the pad is
  *   supposed to move, or let a drag land mid-creep and silently overwrite the zero.
@@ -94,9 +93,9 @@ private const val CreepRepeatIntervalMillis = 100L
  *
  * Otherwise (neither mode on) the reticle is a crosshair with the *bottom* stroke removed — this
  * app has no per-distance BDC ladder (the screen's angular resolution, ~1.8 MOA/px, can't resolve
- * one; see docs/선행기술-도트사이트.md), so that open space instead shows the active profile's
- * valid-range band (see [computeMpbrBand]) as text. The reticle itself is drawn at the *effective*
- * position — zero plus click adjustment (see [AimUiState.effectiveReticleXFraction]/[AimUiState.effectiveReticleYFraction]) —
+ * one; see docs/선행기술-도트사이트.md), so that space is simply left open rather than filled with a
+ * ladder it can't back up. The reticle itself is drawn at the *effective* position — zero plus
+ * click adjustment (see [AimUiState.effectiveReticleXFraction]/[AimUiState.effectiveReticleYFraction]) —
  * and that's also what's shown (and adjustable via the creep pad) while [isCreepMode] is on.
  *
  * Everything else lives in the top [Header] bar (this app is landscape-only, but rotates freely
@@ -133,13 +132,19 @@ fun AimOverlay(
     // crosshair move — so only one of these is ever on at a time.
     var isBoresightingMode by remember { mutableStateOf(false) }
     var isCreepMode by remember { mutableStateOf(false) }
-    val textMeasurer = rememberTextMeasurer()
+    // While a boresighting drag is in flight, the crosshair is hidden so the plain dot stays easy
+    // to line up with an actual laser dot — see the mode's KDoc above.
+    var isZeroDragActive by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier.then(
             if (isBoresightingMode) {
                 Modifier.pointerInput(Unit) {
-                    detectDragGestures { change, _ ->
+                    detectDragGestures(
+                        onDragStart = { isZeroDragActive = true },
+                        onDragEnd = { isZeroDragActive = false },
+                        onDragCancel = { isZeroDragActive = false },
+                    ) { change, _ ->
                         onReticleDrag(change.position.x / size.width, change.position.y / size.height)
                     }
                 }
@@ -152,13 +157,15 @@ fun AimOverlay(
             if (isBoresightingMode) {
                 val zeroCenter = Offset(uiState.reticleXFraction * size.width, uiState.reticleYFraction * size.height)
                 drawZeroingDot(zeroCenter)
+                if (!isZeroDragActive) {
+                    drawCrosshair(zeroCenter)
+                }
             } else {
                 val effectiveCenter = Offset(
                     uiState.effectiveReticleXFraction * size.width,
                     uiState.effectiveReticleYFraction * size.height,
                 )
                 drawCrosshair(effectiveCenter)
-                drawRangeBand(effectiveCenter, formatRangeBand(uiState.zeroDistanceM, uiState.mpbrBandM), textMeasurer)
             }
         }
 
@@ -526,16 +533,9 @@ private fun formatClickReadout(clicks: Int, upLabel: String, downLabel: String):
     return "$direction${abs(clicks)}클릭"
 }
 
-/** e.g. "50m 영점 · 19–362m 유효", or just the zero distance when [band] is `null` (see [computeMpbrBand]). */
-private fun formatRangeBand(zeroDistanceM: Float, band: ClosedRange<Float>?): String {
-    val zeroText = "${zeroDistanceM.roundToInt()}m 영점"
-    if (band == null) return zeroText
-    return "$zeroText · ${band.start.roundToInt()}–${band.endInclusive.roundToInt()}m 유효"
-}
-
 /**
  * The aiming reticle: a dot plus three strokes (top/left/right, each with a gap at the center) —
- * the *bottom* stroke is deliberately missing, leaving room for [drawRangeBand] directly below.
+ * the *bottom* stroke is deliberately missing (see [AimOverlay]'s KDoc).
  */
 private fun DrawScope.drawCrosshair(center: Offset) {
     val strokeLength = 40.dp.toPx()
@@ -563,17 +563,11 @@ private fun DrawScope.drawCrosshair(center: Offset) {
     )
 }
 
-/** In boresighting mode ("영점"), a plain translucent dot (easier to overlay precisely on a real laser dot) replaces the aiming crosshair. */
+/**
+ * In boresighting mode ("영점"), a plain translucent dot (easier to overlay precisely on a real
+ * laser dot than the crosshair's shape is) drawn under the crosshair while the drag is idle — see
+ * [AimOverlay]'s KDoc.
+ */
 private fun DrawScope.drawZeroingDot(center: Offset) {
     drawCircle(color = ReticleDotColor.copy(alpha = 0.5f), radius = 20.dp.toPx(), center = center)
-}
-
-/** [text] (see [formatRangeBand]) centered directly below [center], in the space the missing bottom crosshair stroke leaves open. */
-private fun DrawScope.drawRangeBand(center: Offset, text: String, textMeasurer: TextMeasurer) {
-    val layout = textMeasurer.measure(
-        text = text,
-        style = TextStyle(color = ReticleDotColor, fontSize = 13.sp),
-    )
-    val gap = 16.dp.toPx()
-    drawText(layout, topLeft = Offset(center.x - layout.size.width / 2f, center.y + gap))
 }

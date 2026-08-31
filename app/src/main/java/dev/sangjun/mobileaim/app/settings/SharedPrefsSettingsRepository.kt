@@ -46,7 +46,11 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
     }
 
     override fun updateReticlePosition(xFraction: Float, yFraction: Float) {
-        updateActiveProfile { it.copy(reticleXFraction = xFraction, reticleYFraction = yFraction) }
+        // Click adjustments were dialed in relative to the *old* zero, so they no longer mean
+        // anything once the raw zero moves — see the KDoc on ISettingsRepository.updateReticlePosition.
+        updateActiveProfile {
+            it.copy(reticleXFraction = xFraction, reticleYFraction = yFraction, elevationClicks = 0, windageClicks = 0)
+        }
     }
 
     override fun updateClicks(elevationDelta: Int, windageDelta: Int) {
