@@ -4,13 +4,16 @@ import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
+import android.view.PixelCopy
+import android.view.Window
 import android.widget.Toast
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Recorder
@@ -26,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,6 +40,12 @@ import dev.sangjun.mobileaim.aim.AimViewModel
 import dev.sangjun.mobileaim.app.camera.CameraPreview
 import dev.sangjun.mobileaim.utils.fileTimestampNow
 import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * `MobileAim`, the shared subfolder name every piece of MobileAim output lands under. Where that
@@ -63,8 +73,7 @@ fun MainScreen(
     onCameraError: (Throwable) -> Unit,
 ) {
     val context = LocalContext.current
-    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
-    val onImageCaptureReady = remember { { capture: ImageCapture -> imageCapture = capture } }
+    val coroutineScope = rememberCoroutineScope()
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder> -> videoCapture = capture } }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
@@ -101,7 +110,6 @@ fun MainScreen(
     ) {
         CameraPreview(
             hasCameraPermission = hasCameraPermission,
-            onImageCaptureReady = onImageCaptureReady,
             onVideoCaptureReady = onVideoCaptureReady,
             onCameraFovReady = aimViewModel::onCameraFovAvailable,
             onCameraError = onCameraError,
@@ -112,7 +120,12 @@ fun MainScreen(
             onReticleDrag = aimViewModel::onReticleDrag,
             onToggleLogging = aimViewModel::toggleLogging,
             onCaptureClick = {
-                capturePhoto(context, imageCapture) { captureId -> aimViewModel.logCaptureSnapshot(captureId) }
+                val window = context.findActivity()?.window
+                if (window != null) {
+                    captureScreenshot(context, window, coroutineScope) { captureId ->
+                        aimViewModel.logCaptureSnapshot(captureId)
+                    }
+                }
             },
             isFocusMode = isFocusMode,
             onToggleFocusMode = onToggleFocusMode,
@@ -149,55 +162,73 @@ private fun Context.findActivity(): Activity? {
 }
 
 /**
- * Saves a frame as `capture_<id>.jpg`, using the same [id] as the row
+ * Saves the whole window's current pixels as `capture_<id>.png` — includes whatever [AimOverlay]
+ * is drawing on top of the camera feed (reticle, header, creep pad), unlike the raw sensor frame
+ * a CameraX `ImageCapture` would give. Uses the same [id] as the row
  * [dev.sangjun.mobileaim.aim.AimViewModel.logCaptureSnapshot] writes to `captures.csv` — that
- * shared id is how a photo and its sensor/pose snapshot get matched up after the fact. Only calls
- * [onSaved] once the file has actually landed, so a snapshot never references a missing photo.
+ * shared id is how a screenshot and its sensor/pose snapshot get matched up after the fact. Only
+ * calls [onSaved] once the file has actually landed, so a snapshot never references a missing
+ * screenshot.
  *
- * Lands in the shared `Pictures/$MediaRoot` collection (via MediaStore) on API 29+ — see
- * [MediaRoot]'s doc for why it's `Pictures/` and not a fully custom top-level folder.
- * On older API levels MediaStore's `RELATIVE_PATH` isn't supported, so it falls back to a
- * `MobileAim/images` subfolder inside the app's own external-files directory. Either way, a toast
- * reports exactly where it landed once the save completes.
+ * `PixelCopy` (not `View.drawToBitmap()`) because [dev.sangjun.mobileaim.app.camera.CameraPreview]'s
+ * `PreviewView` defaults to `ImplementationMode.PERFORMANCE`, which can back the preview with a
+ * `SurfaceView` — a plain view-hierarchy draw can't read that surface's pixels, but `PixelCopy` can.
+ * The actual PNG encode/write happens off the main thread via [coroutineScope]; `PixelCopy` itself
+ * delivers its result on the main looper, which is cheap enough to not need a dedicated thread.
  */
-private fun capturePhoto(context: Context, imageCapture: ImageCapture?, onSaved: (id: String) -> Unit) {
-    val capture = imageCapture ?: return
-    val id = fileTimestampNow()
-    val fileName = "capture_$id.jpg"
-    val outputOptions: ImageCapture.OutputFileOptions
-    val displayLocation: String
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        val contentValues = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$MediaRoot")
-        }
-        outputOptions = ImageCapture.OutputFileOptions.Builder(
-            context.contentResolver,
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            contentValues,
-        ).build()
-        displayLocation = "${Environment.DIRECTORY_PICTURES}/$MediaRoot/$fileName"
-    } else {
-        val dir = File(context.getExternalFilesDir(null), "$MediaRoot/images").apply { mkdirs() }
-        outputOptions = ImageCapture.OutputFileOptions.Builder(File(dir, fileName)).build()
-        displayLocation = "Android/data/${context.packageName}/files/$MediaRoot/images/$fileName"
-    }
-    capture.takePicture(
-        outputOptions,
-        ContextCompat.getMainExecutor(context),
-        object : ImageCapture.OnImageSavedCallback {
-            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                Toast.makeText(context, "사진 저장됨: $displayLocation", Toast.LENGTH_SHORT).show()
-                onSaved(id)
+private fun captureScreenshot(
+    context: Context,
+    window: Window,
+    coroutineScope: CoroutineScope,
+    onSaved: (id: String) -> Unit,
+) {
+    val decorView = window.decorView
+    val bitmap = Bitmap.createBitmap(decorView.width, decorView.height, Bitmap.Config.ARGB_8888)
+    PixelCopy.request(
+        window,
+        bitmap,
+        { copyResult ->
+            if (copyResult != PixelCopy.SUCCESS) {
+                Log.w("MobileAimCapture", "Failed to copy screen pixels: result=$copyResult")
+                Toast.makeText(context, "스크린샷 저장 실패", Toast.LENGTH_LONG).show()
+                return@request
             }
-
-            override fun onError(exception: ImageCaptureException) {
-                Log.w("MobileAimCapture", "Failed to save capture photo", exception)
-                Toast.makeText(context, "사진 저장 실패: ${exception.message}", Toast.LENGTH_LONG).show()
+            coroutineScope.launch(Dispatchers.IO) {
+                val id = fileTimestampNow()
+                val fileName = "capture_$id.png"
+                val (outputStream, displayLocation) = openScreenshotOutputStream(context, fileName)
+                outputStream.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "스크린샷 저장됨: $displayLocation", Toast.LENGTH_SHORT).show()
+                    onSaved(id)
+                }
             }
         },
+        Handler(Looper.getMainLooper()),
     )
+}
+
+/**
+ * Opens an [OutputStream] for [fileName] under the shared `Pictures/$MediaRoot` collection (via
+ * MediaStore) on API 29+ — see [MediaRoot]'s doc for why it's `Pictures/` and not a fully custom
+ * top-level folder. On older API levels MediaStore's `RELATIVE_PATH` isn't supported, so it falls
+ * back to a `MobileAim/images` subfolder inside the app's own external-files directory. Returns the
+ * stream paired with a display-friendly path for the completion toast.
+ */
+private fun openScreenshotOutputStream(context: Context, fileName: String): Pair<OutputStream, String> {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$MediaRoot")
+        }
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            ?: error("MediaStore rejected screenshot insert")
+        context.contentResolver.openOutputStream(uri)!! to "${Environment.DIRECTORY_PICTURES}/$MediaRoot/$fileName"
+    } else {
+        val dir = File(context.getExternalFilesDir(null), "$MediaRoot/images").apply { mkdirs() }
+        FileOutputStream(File(dir, fileName)) to "Android/data/${context.packageName}/files/$MediaRoot/images/$fileName"
+    }
 }
 
 /**
@@ -206,7 +237,7 @@ private fun capturePhoto(context: Context, imageCapture: ImageCapture?, onSaved:
  * `video_<timestamp>.mp4`.
  *
  * Lands in the shared `Movies/$MediaRoot` collection (via MediaStore) on API 29+, same rationale
- * and fallback as [capturePhoto]. The session's raw IMU CSV logs land alongside it under
+ * and fallback as [openScreenshotOutputStream]. The session's raw IMU CSV logs land alongside it under
  * `MobileAim/sensors` (see [dev.sangjun.mobileaim.logging.SensorMotionLogger]/[dev.sangjun.mobileaim.logging.CaptureLogWriter]) — the completion toast points there too.
  */
 private fun startVideoRecording(context: Context, videoCapture: VideoCapture<Recorder>): Recording {

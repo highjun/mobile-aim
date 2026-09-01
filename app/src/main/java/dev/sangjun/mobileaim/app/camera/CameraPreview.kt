@@ -3,7 +3,6 @@ package dev.sangjun.mobileaim.app.camera
 import android.view.View
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
@@ -21,11 +20,15 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.hypot
 
-/** v1: plain preview + shutter/video capture use cases — no `ImageAnalysis`, since there's no CV frame consumer anymore. */
+/**
+ * v1: plain preview + video capture use case — no `ImageAnalysis`, since there's no CV frame
+ * consumer anymore. No `ImageCapture` either — the "캡처" button saves a `PixelCopy` of the whole
+ * screen instead (see [dev.sangjun.mobileaim.app.ui.MainScreen]'s `captureScreenshot`), so there's
+ * no raw-sensor-frame use case to bind here.
+ */
 @Composable
 fun CameraPreview(
     hasCameraPermission: Boolean,
-    onImageCaptureReady: (ImageCapture) -> Unit,
     onVideoCaptureReady: (VideoCapture<Recorder>) -> Unit,
     onCameraFovReady: (CameraFov) -> Unit,
     onCameraError: (Throwable) -> Unit,
@@ -87,7 +90,6 @@ fun CameraPreview(
                         val preview = Preview.Builder().build().also {
                             it.setSurfaceProvider(previewView.surfaceProvider)
                         }
-                        val imageCapture = ImageCapture.Builder().build()
                         val recorder = Recorder.Builder().build()
                         val videoCapture = VideoCapture.withOutput(recorder)
 
@@ -96,10 +98,8 @@ fun CameraPreview(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
-                            imageCapture,
                             videoCapture,
                         )
-                        onImageCaptureReady(imageCapture)
                         onVideoCaptureReady(videoCapture)
 
                         val cameraId = Camera2CameraInfo.from(camera.cameraInfo).cameraId
