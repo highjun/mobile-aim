@@ -39,6 +39,13 @@ fun CameraPreview(
     val previewView = remember {
         PreviewView(context).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
+            // PERFORMANCE (the default) prefers backing the preview with a SurfaceView, which
+            // devices often composite via a separate hardware overlay for power savings — that
+            // path bypasses the window's normal GPU-rendered buffer entirely, so a `PixelCopy` of
+            // the Window (see MainScreen's captureScreenshot) reads back black where the camera
+            // feed should be. COMPATIBLE forces a TextureView instead, which is just an ordinary
+            // GL texture in the view hierarchy and always shows up in that capture.
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
     }
 
