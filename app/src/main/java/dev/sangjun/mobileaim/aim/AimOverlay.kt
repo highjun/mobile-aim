@@ -53,6 +53,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -78,8 +79,9 @@ private const val CreepRepeatIntervalMillis = 100L
  *
  * - "정렬" ([isBoresightingMode], boresighting): dragging moves the raw zero — held completely
  *   fixed otherwise, so an incidental touch mid-shake-test can't nudge it. The reticle is always a
- *   plain translucent dot at the raw zero (easier to line up precisely with an actual laser dot
- *   than the crosshair's shape is). The [CreepPad] arrow pad is also shown here (wired to
+ *   plain translucent dot at the raw zero (a single filled blob is easier to line up precisely with
+ *   an actual laser dot than the thin outer ring of the aiming reticle would be). The [CreepPad]
+ *   arrow pad is also shown here (wired to
  *   [onBoresightUp]/[onBoresightDown]/[onBoresightLeft]/[onBoresightRight] instead of the creep
  *   callbacks) as a finer-grained alternative to dragging — it nudges the same raw zero by one
  *   click's worth of screen distance per press, without touching
@@ -95,12 +97,13 @@ private const val CreepRepeatIntervalMillis = 100L
  * The two are mutually exclusive (turning one on turns the other off) since a translucent dot has
  * nothing for creep clicks to visibly move, and the crosshair isn't meant to be dragged directly.
  *
- * Otherwise (neither mode on) the reticle is a crosshair with the *bottom* stroke removed — this
- * app has no per-distance BDC ladder (the screen's angular resolution, ~1.8 MOA/px, can't resolve
- * one; see docs/선행기술-도트사이트.md), so that space is simply left open rather than filled with a
- * ladder it can't back up. The reticle itself is drawn at the *effective* position — zero plus
- * click adjustment (see [AimUiState.effectiveReticleXFraction]/[AimUiState.effectiveReticleYFraction]) —
- * and that's also what's shown (and adjustable via the creep pad) while [isCreepMode] is on.
+ * Otherwise (neither mode on) the reticle is a circle-dot — a full ring plus a translucent center
+ * dot, matching real reflex/holographic sights' standard reticle (e.g. EOTech's 68/2 MOA ring-and-dot).
+ * A real holosight's glass is itself translucent, so the point of aim stays visible straight through
+ * the dot; this app fakes that by giving the dot alpha instead. The reticle itself is drawn at the
+ * *effective* position — zero plus click adjustment (see
+ * [AimUiState.effectiveReticleXFraction]/[AimUiState.effectiveReticleYFraction]) — and that's also
+ * what's shown (and adjustable via the creep pad) while [isCreepMode] is on.
  *
  * Everything else lives in the top [Header] bar (this app is landscape-only, but rotates freely
  * between the two landscape orientations so the bar always sits at the physical top — see the
@@ -163,7 +166,7 @@ fun AimOverlay(
                     uiState.effectiveReticleXFraction * size.width,
                     uiState.effectiveReticleYFraction * size.height,
                 )
-                drawCrosshair(effectiveCenter)
+                drawCircleDot(effectiveCenter)
             }
         }
 
@@ -536,39 +539,24 @@ private fun formatClickReadout(clicks: Int, upLabel: String, downLabel: String):
 }
 
 /**
- * The aiming reticle: a dot plus three strokes (top/left/right, each with a gap at the center) —
- * the *bottom* stroke is deliberately missing (see [AimOverlay]'s KDoc).
+ * The aiming reticle: a full ring plus a translucent center dot (see [AimOverlay]'s KDoc) — the
+ * dot's alpha is what keeps the actual point of aim visible underneath it, standing in for a real
+ * holosight's translucent glass.
  */
-private fun DrawScope.drawCrosshair(center: Offset) {
-    val strokeLength = 40.dp.toPx()
-    val gapRadius = 18.dp.toPx()
-    val strokeWidth = 2.dp.toPx()
+private fun DrawScope.drawCircleDot(center: Offset) {
+    val ringRadius = 18.dp.toPx()
+    val ringStrokeWidth = 2.dp.toPx()
+    val dotRadius = 6.dp.toPx()
+    val dotAlpha = 0.5f
 
-    drawCircle(color = ReticleDotColor, radius = 8.dp.toPx(), center = center)
-    drawLine(
-        color = ReticleDotColor,
-        start = Offset(center.x, center.y - gapRadius - strokeLength),
-        end = Offset(center.x, center.y - gapRadius),
-        strokeWidth = strokeWidth,
-    )
-    drawLine(
-        color = ReticleDotColor,
-        start = Offset(center.x - gapRadius - strokeLength, center.y),
-        end = Offset(center.x - gapRadius, center.y),
-        strokeWidth = strokeWidth,
-    )
-    drawLine(
-        color = ReticleDotColor,
-        start = Offset(center.x + gapRadius, center.y),
-        end = Offset(center.x + gapRadius + strokeLength, center.y),
-        strokeWidth = strokeWidth,
-    )
+    drawCircle(color = ReticleDotColor, radius = ringRadius, center = center, style = Stroke(width = ringStrokeWidth))
+    drawCircle(color = ReticleDotColor.copy(alpha = dotAlpha), radius = dotRadius, center = center)
 }
 
 /**
  * In boresighting mode ("정렬"), the reticle is always this plain translucent dot instead of the
- * aiming crosshair — easier to overlay precisely on a real laser dot than the crosshair's shape is.
- * See [AimOverlay]'s KDoc.
+ * ring-and-dot aiming reticle — a single filled blob is easier to overlay precisely on a real laser
+ * dot than a thin ring is. See [AimOverlay]'s KDoc.
  */
 private fun DrawScope.drawZeroingDot(center: Offset) {
     drawCircle(color = ReticleDotColor.copy(alpha = 0.5f), radius = 20.dp.toPx(), center = center)
