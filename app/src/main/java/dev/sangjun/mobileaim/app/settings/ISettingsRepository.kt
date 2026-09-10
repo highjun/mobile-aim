@@ -7,11 +7,13 @@ interface ISettingsRepository {
 
     /**
      * Updates the active profile's bore-sighted zero — see [AimProfile.reticleXFraction]/
-     * [AimProfile.reticleYFraction]. Also resets [AimProfile.elevationClicks]/[AimProfile.windageClicks]
-     * to 0: they were dialed in relative to the *old* zero, so they'd silently offset the reticle
-     * away from wherever this new zero was just set to.
+     * [AimProfile.reticleYFraction] — together with [zoomRatio], the zoom that was active when
+     * [xFraction]/[yFraction] were captured (see [AimProfile.zeroZoomRatio]). Also resets
+     * [AimProfile.elevationClicks]/[AimProfile.windageClicks] to 0: they were dialed in relative to
+     * the *old* zero, so they'd silently offset the reticle away from wherever this new zero was
+     * just set to.
      */
-    fun updateReticlePosition(xFraction: Float, yFraction: Float)
+    fun updateReticlePosition(xFraction: Float, yFraction: Float, zoomRatio: Float)
 
     /** Nudges the active profile's click counts — see [AimProfile.elevationClicks]/[AimProfile.windageClicks]. */
     fun updateClicks(elevationDelta: Int, windageDelta: Int)

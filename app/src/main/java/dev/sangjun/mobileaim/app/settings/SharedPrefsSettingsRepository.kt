@@ -45,11 +45,17 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
         )
     }
 
-    override fun updateReticlePosition(xFraction: Float, yFraction: Float) {
+    override fun updateReticlePosition(xFraction: Float, yFraction: Float, zoomRatio: Float) {
         // Click adjustments were dialed in relative to the *old* zero, so they no longer mean
         // anything once the raw zero moves — see the KDoc on ISettingsRepository.updateReticlePosition.
         updateActiveProfile {
-            it.copy(reticleXFraction = xFraction, reticleYFraction = yFraction, elevationClicks = 0, windageClicks = 0)
+            it.copy(
+                reticleXFraction = xFraction,
+                reticleYFraction = yFraction,
+                zeroZoomRatio = zoomRatio,
+                elevationClicks = 0,
+                windageClicks = 0,
+            )
         }
     }
 
@@ -141,6 +147,7 @@ private fun AimProfile.toJson(): JSONObject = JSONObject().apply {
     put("name", name)
     put("reticleXFraction", reticleXFraction)
     put("reticleYFraction", reticleYFraction)
+    put("zeroZoomRatio", zeroZoomRatio)
     put("elevationClicks", elevationClicks)
     put("windageClicks", windageClicks)
     put("muzzleVelocityMps", muzzleVelocityMps)
@@ -154,6 +161,9 @@ private fun JSONObject.toAimProfile(): AimProfile = AimProfile(
     name = getString("name"),
     reticleXFraction = getDouble("reticleXFraction").toFloat(),
     reticleYFraction = getDouble("reticleYFraction").toFloat(),
+    // optDouble, not getDouble: profiles saved before zoom existed have no such key — 1f (as if
+    // set at 1x) is exactly right for those, since zoom didn't exist yet.
+    zeroZoomRatio = optDouble("zeroZoomRatio", 1.0).toFloat(),
     elevationClicks = getInt("elevationClicks"),
     windageClicks = getInt("windageClicks"),
     muzzleVelocityMps = getDouble("muzzleVelocityMps").toFloat(),

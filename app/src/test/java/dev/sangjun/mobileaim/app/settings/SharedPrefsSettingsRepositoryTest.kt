@@ -25,7 +25,7 @@ class SharedPrefsSettingsRepositoryTest {
         val repository = SharedPrefsSettingsRepository(context)
         repository.updateClicks(elevationDelta = 6, windageDelta = -2)
 
-        repository.updateReticlePosition(0.6f, 0.3f)
+        repository.updateReticlePosition(0.6f, 0.3f, 1f)
 
         val profile = repository.settings.value.activeProfile
         assertEquals(0.6f, profile.reticleXFraction, 0f)
@@ -38,7 +38,7 @@ class SharedPrefsSettingsRepositoryTest {
     fun `creep clicks do not touch the reticle position`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val repository = SharedPrefsSettingsRepository(context)
-        repository.updateReticlePosition(0.6f, 0.3f)
+        repository.updateReticlePosition(0.6f, 0.3f, 1f)
 
         repository.updateClicks(elevationDelta = 3, windageDelta = 1)
 

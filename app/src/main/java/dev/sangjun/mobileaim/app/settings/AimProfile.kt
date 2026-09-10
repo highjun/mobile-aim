@@ -10,7 +10,10 @@ import dev.sangjun.mobileaim.aim.K2C1RifleMuzzleVelocityMps
  * ballistic parameters (see [dev.sangjun.mobileaim.aim.computeMpbrBand]).
  *
  * [reticleXFraction]/[reticleYFraction]: the bore-sighted zero, set by dragging the reticle onto
- * the laser dot — unaffected by [elevationClicks]/[windageClicks].
+ * the laser dot — unaffected by [elevationClicks]/[windageClicks]. A screen fraction only means
+ * anything at a particular zoom level (zooming crops-and-magnifies the sensor, narrowing the field
+ * of view), so it's paired with [zeroZoomRatio], the zoom that was active when it was last set —
+ * see that field's KDoc.
  *
  * [elevationClicks]/[windageClicks]: fine adjustment dialed in after a confirmation shot, kept as
  * signed click counts rather than pre-converted into a screen fraction — see
@@ -22,6 +25,17 @@ data class AimProfile(
     val name: String,
     val reticleXFraction: Float = 0.5f,
     val reticleYFraction: Float = 0.5f,
+    /**
+     * The zoom ratio that was active when [reticleXFraction]/[reticleYFraction] were last set (by
+     * drag or by the boresighting arrow pad — see [dev.sangjun.mobileaim.aim.AimViewModel.onReticleDrag]).
+     * A screen fraction at one zoom doesn't point at the same real-world spot at another zoom
+     * (fractions scale with the zoom ratio around screen center), so displaying/using the raw zero
+     * at a different current zoom requires reprojecting it by `currentZoomRatio / zeroZoomRatio`
+     * around (0.5, 0.5) — see [dev.sangjun.mobileaim.aim.AimViewModel]'s `uiState`. Old saved
+     * profiles predate zoom entirely, so they're read back as `1f` (equivalent to having been set
+     * at 1x, which is exactly what happened).
+     */
+    val zeroZoomRatio: Float = 1f,
     val elevationClicks: Int = 0,
     val windageClicks: Int = 0,
     val muzzleVelocityMps: Float,

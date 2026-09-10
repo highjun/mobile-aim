@@ -48,15 +48,23 @@ class AimViewModel(
         zoomRatioFlow,
     ) { settings, isLoggingActive, cameraFov, zoomRatio ->
         val profile = settings.activeProfile
-        val elevationOffset = cameraFov?.let { clicksToFraction(profile.elevationClicks, it.focalLengthYPx, it.referenceHeightPx) } ?: 0f
-        val windageOffset = cameraFov?.let { clicksToFraction(profile.windageClicks, it.focalLengthYPx, it.referenceWidthPx) } ?: 0f
+        // Clicks are angle-native (MOA), so only the *current* zoom's effective focal length
+        // matters for converting them to a screen fraction — see CameraFov.zoomRatio's KDoc.
+        val elevationOffset = cameraFov?.let { clicksToFraction(profile.elevationClicks, it.focalLengthYPx * it.zoomRatio, it.referenceHeightPx) } ?: 0f
+        val windageOffset = cameraFov?.let { clicksToFraction(profile.windageClicks, it.focalLengthYPx * it.zoomRatio, it.referenceWidthPx) } ?: 0f
+        // The raw zero, unlike clicks, is a screen fraction captured at profile.zeroZoomRatio — it
+        // only means the same real-world point at another zoom once reprojected around center — see
+        // dev.sangjun.mobileaim.app.settings.AimProfile.zeroZoomRatio.
+        val currentZoomRatio = cameraFov?.zoomRatio ?: 1f
+        val reticleXFraction = reprojectFractionForZoom(profile.reticleXFraction, currentZoomRatio, profile.zeroZoomRatio).coerceIn(0f, 1f)
+        val reticleYFraction = reprojectFractionForZoom(profile.reticleYFraction, currentZoomRatio, profile.zeroZoomRatio).coerceIn(0f, 1f)
 
         AimUiState(
-            reticleXFraction = profile.reticleXFraction,
-            reticleYFraction = profile.reticleYFraction,
+            reticleXFraction = reticleXFraction,
+            reticleYFraction = reticleYFraction,
             // Elevation clicks move the reticle up the screen (smaller Y); windage clicks move it right (larger X) — see MoaClicks.kt.
-            effectiveReticleXFraction = (profile.reticleXFraction + windageOffset).coerceIn(0f, 1f),
-            effectiveReticleYFraction = (profile.reticleYFraction - elevationOffset).coerceIn(0f, 1f),
+            effectiveReticleXFraction = (reticleXFraction + windageOffset).coerceIn(0f, 1f),
+            effectiveReticleYFraction = (reticleYFraction - elevationOffset).coerceIn(0f, 1f),
             elevationClicks = profile.elevationClicks,
             windageClicks = profile.windageClicks,
             isLoggingActive = isLoggingActive,
@@ -69,12 +77,18 @@ class AimViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
 
     /**
-     * [xFraction]/[yFraction] are 0..1 across the displayed camera preview. Edits the active
-     * profile's raw zero, and resets its click adjustments to 0 in the same update — see
-     * [ISettingsRepository.updateReticlePosition].
+     * [xFraction]/[yFraction] are 0..1 across the displayed camera preview, at whatever zoom is
+     * currently active — saved as-is, together with that zoom ratio (see
+     * [dev.sangjun.mobileaim.app.settings.AimProfile.zeroZoomRatio]), no conversion needed since the
+     * dragged fraction already *is* "the fraction at the current zoom". Also resets the active
+     * profile's click adjustments to 0 in the same update — see [ISettingsRepository.updateReticlePosition].
      */
     fun onReticleDrag(xFraction: Float, yFraction: Float) {
-        settingsRepository.updateReticlePosition(xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
+        settingsRepository.updateReticlePosition(
+            xFraction.coerceIn(0f, 1f),
+            yFraction.coerceIn(0f, 1f),
+            cameraFovFlow.value?.zoomRatio ?: 1f,
+        )
     }
 
     /** Moves the reticle up by one click ([MoaPerClick] MOA) — see [AimUiState.effectiveReticleYFraction]. */
@@ -90,41 +104,52 @@ class AimViewModel(
     fun onCreepRight() = settingsRepository.updateClicks(elevationDelta = 0, windageDelta = 1)
 
     /**
-     * Nudges the raw zero itself by [dxFraction]/[dyFraction] — for boresighting's arrow pad, an
-     * alternative to dragging for finer control. Goes through [ISettingsRepository.updateReticlePosition],
-     * the same path [onReticleDrag] uses, so it resets [AimUiState.elevationClicks]/[AimUiState.windageClicks]
-     * exactly like a drag would (they were dialed in relative to the zero this just moved).
+     * Nudges the raw zero itself by [dxFraction]/[dyFraction] (already expressed at the current
+     * zoom — see the `onBoresight*` callers) — for boresighting's arrow pad, an alternative to
+     * dragging for finer control. Goes through [ISettingsRepository.updateReticlePosition], the same
+     * path [onReticleDrag] uses (including saving the current zoom as the new
+     * `zeroZoomRatio`), so it resets [AimUiState.elevationClicks]/[AimUiState.windageClicks] exactly
+     * like a drag would (they were dialed in relative to the zero this just moved).
      */
-    private fun nudgeRawZero(dxFraction: Float, dyFraction: Float) {
+    private fun nudgeRawZero(dxFraction: Float, dyFraction: Float, zoomRatio: Float) {
         val profile = settingsRepository.settings.value.activeProfile
         settingsRepository.updateReticlePosition(
             (profile.reticleXFraction + dxFraction).coerceIn(0f, 1f),
             (profile.reticleYFraction + dyFraction).coerceIn(0f, 1f),
+            zoomRatio,
         )
     }
+
+    /**
+     * One click's worth of screen distance at the *current* zoom — [nudgeRawZero]'s delta must be
+     * in those terms since the zero it's added to is now saved (and reprojected) per current zoom,
+     * not a fixed reference (see [dev.sangjun.mobileaim.app.settings.AimProfile.zeroZoomRatio]).
+     */
+    private fun oneClickFraction(focalLengthPx: Float, referenceLengthPx: Float, zoomRatio: Float) =
+        clicksToFraction(1, focalLengthPx * zoomRatio, referenceLengthPx)
 
     /** Nudges the raw zero up by one click's worth of screen distance — never touches the click counters (see [nudgeRawZero]). */
     fun onBoresightUp() {
         val fov = cameraFovFlow.value ?: return
-        nudgeRawZero(dxFraction = 0f, dyFraction = -clicksToFraction(1, fov.focalLengthYPx, fov.referenceHeightPx))
+        nudgeRawZero(dxFraction = 0f, dyFraction = -oneClickFraction(fov.focalLengthYPx, fov.referenceHeightPx, fov.zoomRatio), zoomRatio = fov.zoomRatio)
     }
 
     /** Nudges the raw zero down by one click's worth of screen distance. */
     fun onBoresightDown() {
         val fov = cameraFovFlow.value ?: return
-        nudgeRawZero(dxFraction = 0f, dyFraction = clicksToFraction(1, fov.focalLengthYPx, fov.referenceHeightPx))
+        nudgeRawZero(dxFraction = 0f, dyFraction = oneClickFraction(fov.focalLengthYPx, fov.referenceHeightPx, fov.zoomRatio), zoomRatio = fov.zoomRatio)
     }
 
     /** Nudges the raw zero left by one click's worth of screen distance. */
     fun onBoresightLeft() {
         val fov = cameraFovFlow.value ?: return
-        nudgeRawZero(dxFraction = -clicksToFraction(1, fov.focalLengthYPx, fov.referenceWidthPx), dyFraction = 0f)
+        nudgeRawZero(dxFraction = -oneClickFraction(fov.focalLengthYPx, fov.referenceWidthPx, fov.zoomRatio), dyFraction = 0f, zoomRatio = fov.zoomRatio)
     }
 
     /** Nudges the raw zero right by one click's worth of screen distance. */
     fun onBoresightRight() {
         val fov = cameraFovFlow.value ?: return
-        nudgeRawZero(dxFraction = clicksToFraction(1, fov.focalLengthYPx, fov.referenceWidthPx), dyFraction = 0f)
+        nudgeRawZero(dxFraction = oneClickFraction(fov.focalLengthYPx, fov.referenceWidthPx, fov.zoomRatio), dyFraction = 0f, zoomRatio = fov.zoomRatio)
     }
 
     /** Switches which saved profile is active. */

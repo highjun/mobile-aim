@@ -61,4 +61,29 @@ class SharedPrefsSettingsRepositoryMigrationTest {
         assertEquals(DefaultAimProfiles.map { it.id }, settings.profiles.map { it.id })
         assertEquals(FirearmProfileId, settings.activeProfileId)
     }
+
+    /**
+     * A v1 profile JSON blob saved before zoom existed has no `zeroZoomRatio` key at all — reading
+     * it back must default to `1f` (equivalent to having been set at 1x, which is exactly what
+     * happened), not crash on a missing key.
+     */
+    @Test
+    fun `reads a pre-zoom v1 profile without a zeroZoomRatio key as 1x`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("mobileaim_settings", Context.MODE_PRIVATE)
+        val profileJson = """
+            {"id":"$FirearmProfileId","name":"화기","reticleXFraction":0.5,"reticleYFraction":0.5,
+             "elevationClicks":0,"windageClicks":0,"muzzleVelocityMps":920.0,"zeroDistanceM":50.0,
+             "hobCm":4.0,"targetRadiusCm":38.0}
+        """.trimIndent()
+        prefs.edit()
+            .putInt("settings_schema_version", 1)
+            .putString("profiles", "[$profileJson]")
+            .putString("active_profile_id", FirearmProfileId)
+            .apply()
+
+        val settings = SharedPrefsSettingsRepository(context).settings.value
+
+        assertEquals(1f, settings.activeProfile.zeroZoomRatio, 0f)
+    }
 }
