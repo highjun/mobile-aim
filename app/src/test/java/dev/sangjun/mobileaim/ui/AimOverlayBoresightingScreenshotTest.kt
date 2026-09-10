@@ -59,6 +59,7 @@ class AimOverlayBoresightingScreenshotTest {
                         isFocusMode = false,
                         onToggleFocusMode = {},
                         onBrightnessChange = {},
+                        onZoomChange = {},
                         isProfileSheetOpen = false,
                         onOpenProfileSheet = {},
                         onDismissProfileSheet = {},

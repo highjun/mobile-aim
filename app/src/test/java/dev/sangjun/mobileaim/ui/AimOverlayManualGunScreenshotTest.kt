@@ -51,6 +51,7 @@ class AimOverlayManualGunScreenshotTest {
                         isFocusMode = false,
                         onToggleFocusMode = {},
                         onBrightnessChange = {},
+                        onZoomChange = {},
                         isProfileSheetOpen = false,
                         onOpenProfileSheet = {},
                         onDismissProfileSheet = {},

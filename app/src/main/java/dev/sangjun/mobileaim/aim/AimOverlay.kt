@@ -120,6 +120,7 @@ fun AimOverlay(
     isFocusMode: Boolean,
     onToggleFocusMode: () -> Unit,
     onBrightnessChange: (Float) -> Unit,
+    onZoomChange: (Float) -> Unit,
     isProfileSheetOpen: Boolean,
     onOpenProfileSheet: () -> Unit,
     onDismissProfileSheet: () -> Unit,
@@ -205,6 +206,8 @@ fun AimOverlay(
             onToggleFocusMode = onToggleFocusMode,
             brightness = uiState.brightness,
             onBrightnessChange = onBrightnessChange,
+            zoomRatio = uiState.zoomRatio,
+            onZoomChange = onZoomChange,
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
@@ -249,6 +252,8 @@ private fun Header(
     onToggleFocusMode: () -> Unit,
     brightness: Float,
     onBrightnessChange: (Float) -> Unit,
+    zoomRatio: Float,
+    onZoomChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -305,6 +310,7 @@ private fun Header(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ActiveProfileLabel(name = activeProfileName, onClick = onOpenProfileSheet)
+                ZoomChipRow(zoomRatio = zoomRatio, onZoomChange = onZoomChange)
                 BrightnessCapsuleSlider(brightness = brightness, onBrightnessChange = onBrightnessChange)
             }
         }
@@ -333,6 +339,51 @@ private fun ActiveProfileLabel(
             contentDescription = "프로파일 목록 열기",
             tint = MaterialTheme.colorScheme.onSurface,
         )
+    }
+}
+
+/** Discrete zoom presets — a slider needs a free hand to drag precisely, which the shooter doesn't have while holding the gun; a one-tap preset doesn't. */
+private val ZoomPresets = listOf(1f, 2f, 4f)
+
+/**
+ * The three zoom preset chips ("1x"/"2x"/"4x") — see [ZoomPresets]. Plain text, not
+ * [LabeledHeaderButton]'s icon-over-label shape, since there's no icon that reads as "zoom level"
+ * at a glance the way a number does.
+ */
+@Composable
+private fun ZoomChipRow(
+    zoomRatio: Float,
+    onZoomChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (preset in ZoomPresets) {
+            ZoomChip(preset = preset, active = preset == zoomRatio, onClick = { onZoomChange(preset) })
+        }
+    }
+}
+
+@Composable
+private fun ZoomChip(
+    preset: Float,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(6.dp),
+        color = if (active) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+        },
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.size(width = 40.dp, height = 32.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(text = "${preset.toInt()}x", style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 

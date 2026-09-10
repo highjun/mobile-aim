@@ -2,8 +2,10 @@ package dev.sangjun.mobileaim.app.camera
 
 import android.view.View
 import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
+import androidx.camera.core.ZoomState
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
@@ -16,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.hypot
@@ -30,6 +33,7 @@ import kotlin.math.hypot
 fun CameraPreview(
     hasCameraPermission: Boolean,
     onVideoCaptureReady: (VideoCapture<Recorder>) -> Unit,
+    onCameraReady: (Camera) -> Unit,
     onCameraFovReady: (CameraFov) -> Unit,
     onCameraError: (Throwable) -> Unit,
     modifier: Modifier = Modifier,
@@ -57,6 +61,8 @@ fun CameraPreview(
     DisposableEffect(hasCameraPermission, previewView, lifecycleOwner) {
         var cameraProvider: ProcessCameraProvider? = null
         var focalLengthYPx: Float? = null
+        var currentZoomRatio = 1f
+        var zoomStateLiveData: LiveData<ZoomState>? = null
 
         // FILL_CENTER crops the sensor buffer to fill the (differently-shaped) screen — see
         // [CameraFov]'s KDoc. `sensorToViewTransform` bakes in that crop, the SENSOR_ORIENTATION
@@ -75,6 +81,7 @@ fun CameraPreview(
                     focalLengthYPx = fy,
                     referenceHeightPx = previewView.height / scale,
                     referenceWidthPx = previewView.width / scale,
+                    zoomRatio = currentZoomRatio,
                 ),
             )
         }
@@ -85,6 +92,15 @@ fun CameraPreview(
         previewView.previewStreamState.observe(lifecycleOwner, streamStateObserver)
         val layoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> publishFov() }
         previewView.addOnLayoutChangeListener(layoutListener)
+
+        // Republished separately from the stream/layout triggers above: applying a zoom crops the
+        // sensor without touching the view's layout or the stream state, so neither of those fires
+        // on its own. `zoomState` only reflects the ratio CameraX actually settled on (may differ
+        // slightly from what was requested), which is exactly what a screen-fraction conversion needs.
+        val zoomStateObserver = Observer<ZoomState> { zoomState ->
+            currentZoomRatio = zoomState.zoomRatio
+            publishFov()
+        }
 
         if (hasCameraPermission) {
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -108,6 +124,11 @@ fun CameraPreview(
                             videoCapture,
                         )
                         onVideoCaptureReady(videoCapture)
+                        onCameraReady(camera)
+
+                        zoomStateLiveData = camera.cameraInfo.zoomState.also {
+                            it.observe(lifecycleOwner, zoomStateObserver)
+                        }
 
                         val cameraId = Camera2CameraInfo.from(camera.cameraInfo).cameraId
                         focalLengthYPx = CameraFovProvider(context).getFocalLengthYPx(cameraId)
@@ -123,6 +144,7 @@ fun CameraPreview(
         onDispose {
             previewView.removeOnLayoutChangeListener(layoutListener)
             previewView.previewStreamState.removeObserver(streamStateObserver)
+            zoomStateLiveData?.removeObserver(zoomStateObserver)
             cameraProvider?.unbindAll()
         }
     }

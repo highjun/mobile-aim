@@ -27,6 +27,8 @@ data class AimUiState(
     val isLoggingActive: Boolean = false,
     /** Manual screen brightness (0..1) the app forces on its window, replacing system auto-brightness. */
     val brightness: Float = 0.8f,
+    /** The header's currently selected zoom chip (1x/2x/4x) — see [dev.sangjun.mobileaim.aim.AimViewModel.onZoomChange]. Not the same as [dev.sangjun.mobileaim.app.camera.CameraFov.zoomRatio], which is what CameraX actually settled on. */
+    val zoomRatio: Float = 1f,
     val profiles: List<AimProfile> = DefaultAimProfiles,
     val activeProfileId: String = DefaultAimProfiles.first().id,
     /** Whether a [dev.sangjun.mobileaim.app.camera.CameraFov] is available yet — gates the creep pad's arrow buttons (see [AimOverlay]) so a press doesn't silently do nothing. */

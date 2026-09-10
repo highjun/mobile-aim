@@ -14,6 +14,7 @@ import android.util.Log
 import android.view.PixelCopy
 import android.view.Window
 import android.widget.Toast
+import androidx.camera.core.Camera
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Recorder
@@ -76,9 +77,22 @@ fun MainScreen(
     val coroutineScope = rememberCoroutineScope()
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder> -> videoCapture = capture } }
+    var camera by remember { mutableStateOf<Camera?>(null) }
+    val onCameraReady = remember { { boundCamera: Camera -> camera = boundCamera } }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
     var isProfileSheetOpen by remember { mutableStateOf(false) }
     val uiState by aimViewModel.uiState.collectAsState()
+
+    // Applies the header's chosen zoom chip to the actual bound camera — clamped to what the
+    // hardware reports, since a discrete preset (see AimOverlay's zoom chips) can exceed a given
+    // device's max zoom ratio.
+    LaunchedEffect(uiState.zoomRatio, camera) {
+        val boundCamera = camera ?: return@LaunchedEffect
+        val zoomState = boundCamera.cameraInfo.zoomState.value ?: return@LaunchedEffect
+        boundCamera.cameraControl.setZoomRatio(
+            uiState.zoomRatio.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio),
+        )
+    }
 
     // Force the manual brightness onto the host Activity's window; setting an explicit 0..1 value
     // is what disables the system's auto-brightness for this app (see AimUiState.brightness).
@@ -111,6 +125,7 @@ fun MainScreen(
         CameraPreview(
             hasCameraPermission = hasCameraPermission,
             onVideoCaptureReady = onVideoCaptureReady,
+            onCameraReady = onCameraReady,
             onCameraFovReady = aimViewModel::onCameraFovAvailable,
             onCameraError = onCameraError,
         )
@@ -130,6 +145,7 @@ fun MainScreen(
             isFocusMode = isFocusMode,
             onToggleFocusMode = onToggleFocusMode,
             onBrightnessChange = aimViewModel::onBrightnessChange,
+            onZoomChange = aimViewModel::onZoomChange,
             isProfileSheetOpen = isProfileSheetOpen,
             onOpenProfileSheet = { isProfileSheetOpen = true },
             onDismissProfileSheet = { isProfileSheetOpen = false },

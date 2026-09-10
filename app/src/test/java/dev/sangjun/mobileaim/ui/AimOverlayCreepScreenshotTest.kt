@@ -64,6 +64,7 @@ class AimOverlayCreepScreenshotTest {
                         isFocusMode = false,
                         onToggleFocusMode = {},
                         onBrightnessChange = {},
+                        onZoomChange = {},
                         isProfileSheetOpen = false,
                         onOpenProfileSheet = {},
                         onDismissProfileSheet = {},

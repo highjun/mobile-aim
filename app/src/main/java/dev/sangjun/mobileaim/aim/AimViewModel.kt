@@ -38,11 +38,15 @@ class AimViewModel(
     /** Set from [onCameraFovAvailable] whenever the preview's stream/layout changes — null until the first publish, and click offsets fall back to 0 (raw zero only) rather than guessing. */
     private val cameraFovFlow = MutableStateFlow<CameraFov?>(null)
 
+    /** The header's selected zoom chip (see [onZoomChange]) — [dev.sangjun.mobileaim.app.ui.MainScreen] applies it to the bound camera; [cameraFovFlow]'s [CameraFov.zoomRatio] reports back what CameraX actually settled on. */
+    private val zoomRatioFlow = MutableStateFlow(1f)
+
     val uiState: StateFlow<AimUiState> = combine(
         settingsRepository.settings,
         isLoggingActiveFlow,
         cameraFovFlow,
-    ) { settings, isLoggingActive, cameraFov ->
+        zoomRatioFlow,
+    ) { settings, isLoggingActive, cameraFov, zoomRatio ->
         val profile = settings.activeProfile
         val elevationOffset = cameraFov?.let { clicksToFraction(profile.elevationClicks, it.focalLengthYPx, it.referenceHeightPx) } ?: 0f
         val windageOffset = cameraFov?.let { clicksToFraction(profile.windageClicks, it.focalLengthYPx, it.referenceWidthPx) } ?: 0f
@@ -60,6 +64,7 @@ class AimViewModel(
             profiles = settings.profiles,
             activeProfileId = settings.activeProfileId,
             isCreepAvailable = cameraFov != null,
+            zoomRatio = zoomRatio,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
 
@@ -155,6 +160,11 @@ class AimViewModel(
     /** Called whenever the preview's stream/layout changes (see [dev.sangjun.mobileaim.app.camera.CameraPreview]'s `onCameraFovReady`). */
     fun onCameraFovAvailable(fov: CameraFov) {
         cameraFovFlow.value = fov
+    }
+
+    /** Selects a zoom chip (1x/2x/4x) from the header — [dev.sangjun.mobileaim.app.ui.MainScreen] reacts to [uiState]'s [AimUiState.zoomRatio] to actually apply it to the bound camera. */
+    fun onZoomChange(zoomRatio: Float) {
+        zoomRatioFlow.value = zoomRatio
     }
 
     /** [brightness] is 0..1; persisted so the manual screen brightness survives app restarts. */
