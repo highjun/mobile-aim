@@ -2,7 +2,6 @@ package dev.sangjun.mobileaim.aim
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -36,6 +35,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -97,11 +99,11 @@ private const val CreepRepeatIntervalMillis = 100L
  * The two are mutually exclusive (turning one on turns the other off) since a translucent dot has
  * nothing for creep clicks to visibly move, and the crosshair isn't meant to be dragged directly.
  *
- * Otherwise (neither mode on) the reticle is a circle-dot — a full ring plus a translucent center
- * dot, matching real reflex/holographic sights' standard reticle (e.g. EOTech's 68/2 MOA ring-and-dot).
- * A real holosight's glass is itself translucent, so the point of aim stays visible straight through
- * the dot; this app fakes that by giving the dot alpha instead. The reticle itself is drawn at the
- * *effective* position — zero plus click adjustment (see
+ * Otherwise (neither mode on) the reticle is a ring with a crosshair stroke growing outward from
+ * each of the ring's four cardinal points, plus a translucent center dot (see [drawRingCrosshair]).
+ * The dot's alpha is what keeps the actual point of aim visible underneath it — the same idea as a
+ * real holosight's glass being translucent, just faked digitally instead. The reticle itself is
+ * drawn at the *effective* position — zero plus click adjustment (see
  * [AimUiState.effectiveReticleXFraction]/[AimUiState.effectiveReticleYFraction]) — and that's also
  * what's shown (and adjustable via the creep pad) while [isCreepMode] is on.
  *
@@ -167,7 +169,7 @@ fun AimOverlay(
                     uiState.effectiveReticleXFraction * size.width,
                     uiState.effectiveReticleYFraction * size.height,
                 )
-                drawCircleDot(effectiveCenter)
+                drawRingCrosshair(effectiveCenter)
             }
         }
 
@@ -310,7 +312,7 @@ private fun Header(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ActiveProfileLabel(name = activeProfileName, onClick = onOpenProfileSheet)
-                ZoomChipRow(zoomRatio = zoomRatio, onZoomChange = onZoomChange)
+                ZoomButton(zoomRatio = zoomRatio, onZoomChange = onZoomChange)
                 BrightnessCapsuleSlider(brightness = brightness, onBrightnessChange = onBrightnessChange)
             }
         }
@@ -318,10 +320,10 @@ private fun Header(
 }
 
 /**
- * Plain text (no button chip) naming the active profile — opens [ProfileSheet] on tap. The old
- * chip-styled button here looked just like another mode toggle (see "정렬"/"영점" above),
- * which made it easy to miss as the actual entry point into profile management; the trailing
- * [Icons.Filled.ArrowDropDown] is the only affordance hinting it's tappable.
+ * Names the active profile inside the same chip styling the other header buttons use — plain
+ * unboxed text here used to read as inert labeling rather than the actual entry point into profile
+ * management; the box (plus the trailing [Icons.Filled.ArrowDropDown]) now matches those buttons'
+ * affordance for "this is tappable". Opens [ProfileSheet] on tap.
  */
 @Composable
 private fun ActiveProfileLabel(
@@ -329,16 +331,20 @@ private fun ActiveProfileLabel(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier.clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier,
     ) {
-        Text(text = name, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-        Icon(
-            imageVector = Icons.Filled.ArrowDropDown,
-            contentDescription = "프로파일 목록 열기",
-            tint = MaterialTheme.colorScheme.onSurface,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = name, style = MaterialTheme.typography.bodyLarge)
+            Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = "프로파일 목록 열기")
+        }
     }
 }
 
@@ -346,43 +352,34 @@ private fun ActiveProfileLabel(
 private val ZoomPresets = listOf(1f, 2f, 4f)
 
 /**
- * The three zoom preset chips ("1x"/"2x"/"4x") — see [ZoomPresets]. Plain text, not
- * [LabeledHeaderButton]'s icon-over-label shape, since there's no icon that reads as "zoom level"
- * at a glance the way a number does.
+ * A single header button (same shape as [LabeledHeaderButton]) showing the current zoom ratio as
+ * its label — tapping it opens a [DropdownMenu] to pick a different [ZoomPresets] value, instead of
+ * three always-visible chips that took up header width for a value that rarely changes mid-session.
  */
 @Composable
-private fun ZoomChipRow(
+private fun ZoomButton(
     zoomRatio: Float,
     onZoomChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        for (preset in ZoomPresets) {
-            ZoomChip(preset = preset, active = preset == zoomRatio, onClick = { onZoomChange(preset) })
-        }
-    }
-}
-
-@Composable
-private fun ZoomChip(
-    preset: Float,
-    active: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(6.dp),
-        color = if (active) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-        } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
-        },
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier.size(width = 40.dp, height = 32.dp),
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Text(text = "${preset.toInt()}x", style = MaterialTheme.typography.labelSmall)
+    var isExpanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        LabeledHeaderButton(
+            icon = Icons.Filled.ZoomIn,
+            label = "${zoomRatio.toInt()}x",
+            active = isExpanded,
+            onClick = { isExpanded = true },
+        )
+        DropdownMenu(expanded = isExpanded, onDismissRequest = { isExpanded = false }) {
+            for (preset in ZoomPresets) {
+                DropdownMenuItem(
+                    text = { Text("${preset.toInt()}x") },
+                    onClick = {
+                        onZoomChange(preset)
+                        isExpanded = false
+                    },
+                )
+            }
         }
     }
 }
@@ -590,17 +587,45 @@ private fun formatClickReadout(clicks: Int, upLabel: String, downLabel: String):
 }
 
 /**
- * The aiming reticle: a full ring plus a translucent center dot (see [AimOverlay]'s KDoc) — the
- * dot's alpha is what keeps the actual point of aim visible underneath it, standing in for a real
- * holosight's translucent glass.
+ * The aiming reticle: a ring with a crosshair stroke growing outward from each of its four
+ * cardinal points, plus a translucent center dot (see [AimOverlay]'s KDoc) — the dot's alpha is
+ * what keeps the actual point of aim visible underneath it, standing in for a real holosight's
+ * translucent glass. Each stroke starts exactly at the ring's edge (no center gap the way the old
+ * crosshair-only reticle had) and extends outward, so the ring reads as the strokes' common origin
+ * rather than four independent lines.
  */
-private fun DrawScope.drawCircleDot(center: Offset) {
+private fun DrawScope.drawRingCrosshair(center: Offset) {
     val ringRadius = 18.dp.toPx()
     val ringStrokeWidth = 2.dp.toPx()
+    val tickLength = 14.dp.toPx()
     val dotRadius = 6.dp.toPx()
     val dotAlpha = 0.5f
 
     drawCircle(color = ReticleDotColor, radius = ringRadius, center = center, style = Stroke(width = ringStrokeWidth))
+    drawLine(
+        color = ReticleDotColor,
+        start = Offset(center.x, center.y - ringRadius),
+        end = Offset(center.x, center.y - ringRadius - tickLength),
+        strokeWidth = ringStrokeWidth,
+    )
+    drawLine(
+        color = ReticleDotColor,
+        start = Offset(center.x, center.y + ringRadius),
+        end = Offset(center.x, center.y + ringRadius + tickLength),
+        strokeWidth = ringStrokeWidth,
+    )
+    drawLine(
+        color = ReticleDotColor,
+        start = Offset(center.x - ringRadius, center.y),
+        end = Offset(center.x - ringRadius - tickLength, center.y),
+        strokeWidth = ringStrokeWidth,
+    )
+    drawLine(
+        color = ReticleDotColor,
+        start = Offset(center.x + ringRadius, center.y),
+        end = Offset(center.x + ringRadius + tickLength, center.y),
+        strokeWidth = ringStrokeWidth,
+    )
     drawCircle(color = ReticleDotColor.copy(alpha = dotAlpha), radius = dotRadius, center = center)
 }
 
