@@ -22,6 +22,9 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -34,6 +37,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import dev.sangjun.mobileaim.aim.AimOverlay
@@ -120,7 +125,8 @@ fun MainScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .pinchToZoom(aimViewModel::onPinchZoom),
     ) {
         CameraPreview(
             hasCameraPermission = hasCameraPermission,
@@ -164,6 +170,26 @@ fun MainScreen(
             onBoresightRight = aimViewModel::onBoresightRight,
             modifier = Modifier.fillMaxSize(),
         )
+    }
+}
+
+/**
+ * Two-finger pinch anywhere on screen → [onZoom] with the frame-to-frame zoom factor. Listens on
+ * [PointerEventPass.Initial] so it sees the gesture before [AimOverlay]'s one-finger reticle drag
+ * can consume it, and only consumes events while two or more fingers are down — a single-finger
+ * drag still reaches the overlay untouched.
+ */
+private fun Modifier.pinchToZoom(onZoom: (Float) -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.changes.count { it.pressed } >= 2) {
+                val zoom = event.calculateZoom()
+                if (zoom != 1f) onZoom(zoom)
+                event.changes.forEach { it.consume() }
+            }
+        } while (event.changes.any { it.pressed })
     }
 }
 

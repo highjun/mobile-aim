@@ -351,6 +351,10 @@ private fun ActiveProfileLabel(
 /** Discrete zoom presets — a slider needs a free hand to drag precisely, which the shooter doesn't have while holding the gun; a one-tap preset doesn't. */
 private val ZoomPresets = listOf(1f, 2f, 4f)
 
+/** "2x" for whole ratios, "2.5x" for in-between ones a pinch can land on. */
+private fun formatZoom(zoomRatio: Float): String =
+    if (zoomRatio % 1f < 0.05f) "${zoomRatio.toInt()}x" else "%.1fx".format(zoomRatio)
+
 /**
  * A single header button (same shape as [LabeledHeaderButton]) showing the current zoom ratio as
  * its label — tapping it opens a [DropdownMenu] to pick a different [ZoomPresets] value, instead of
@@ -366,14 +370,14 @@ private fun ZoomButton(
     Box(modifier = modifier) {
         LabeledHeaderButton(
             icon = Icons.Filled.ZoomIn,
-            label = "${zoomRatio.toInt()}x",
+            label = formatZoom(zoomRatio),
             active = isExpanded,
             onClick = { isExpanded = true },
         )
         DropdownMenu(expanded = isExpanded, onDismissRequest = { isExpanded = false }) {
             for (preset in ZoomPresets) {
                 DropdownMenuItem(
-                    text = { Text("${preset.toInt()}x") },
+                    text = { Text(formatZoom(preset)) },
                     onClick = {
                         onZoomChange(preset)
                         isExpanded = false

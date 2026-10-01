@@ -192,6 +192,11 @@ class AimViewModel(
         zoomRatioFlow.value = zoomRatio
     }
 
+    /** Two-finger pinch on the camera view — multiplies the current zoom by [factor], kept within 1x..[MaxPinchZoom] (the device's own max is clamped again in MainScreen). */
+    fun onPinchZoom(factor: Float) {
+        zoomRatioFlow.value = (zoomRatioFlow.value * factor).coerceIn(1f, MaxPinchZoom)
+    }
+
     /** [brightness] is 0..1; persisted so the manual screen brightness survives app restarts. */
     fun onBrightnessChange(brightness: Float) {
         settingsRepository.updateBrightness(brightness.coerceIn(0f, 1f))
@@ -228,3 +233,5 @@ class AimViewModel(
         )
     }
 }
+
+private const val MaxPinchZoom = 8f
