@@ -86,6 +86,7 @@ fun MainScreen(
     val onCameraReady = remember { { boundCamera: Camera -> camera = boundCamera } }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
     var isProfileSheetOpen by remember { mutableStateOf(false) }
+    var isLocked by remember { mutableStateOf(false) }
     val uiState by aimViewModel.uiState.collectAsState()
 
     // Applies the header's chosen zoom chip to the actual bound camera — clamped to what the
@@ -94,9 +95,11 @@ fun MainScreen(
     LaunchedEffect(uiState.zoomRatio, camera) {
         val boundCamera = camera ?: return@LaunchedEffect
         val zoomState = boundCamera.cameraInfo.zoomState.value ?: return@LaunchedEffect
-        boundCamera.cameraControl.setZoomRatio(
-            uiState.zoomRatio.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio),
-        )
+        val clamped = uiState.zoomRatio.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+        boundCamera.cameraControl.setZoomRatio(clamped)
+        // Keep the header label honest (and pinch-out responsive) on devices whose max is below
+        // what was asked for.
+        if (clamped != uiState.zoomRatio) aimViewModel.onZoomChange(clamped)
     }
 
     // Force the manual brightness onto the host Activity's window; setting an explicit 0..1 value
@@ -126,7 +129,7 @@ fun MainScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pinchToZoom(aimViewModel::onPinchZoom),
+            .then(if (isLocked) Modifier else Modifier.pinchToZoom(aimViewModel::onPinchZoom)),
     ) {
         CameraPreview(
             hasCameraPermission = hasCameraPermission,
@@ -168,6 +171,8 @@ fun MainScreen(
             onBoresightDown = aimViewModel::onBoresightDown,
             onBoresightLeft = aimViewModel::onBoresightLeft,
             onBoresightRight = aimViewModel::onBoresightRight,
+            isLocked = isLocked,
+            onToggleLock = { isLocked = !isLocked },
             modifier = Modifier.fillMaxSize(),
         )
     }

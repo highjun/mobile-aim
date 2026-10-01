@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ZoomIn
@@ -47,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -139,6 +143,8 @@ fun AimOverlay(
     onBoresightDown: () -> Unit,
     onBoresightLeft: () -> Unit,
     onBoresightRight: () -> Unit,
+    isLocked: Boolean = false,
+    onToggleLock: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Mutually exclusive: dragging edits the raw zero the crosshair isn't even drawn against
@@ -146,13 +152,33 @@ fun AimOverlay(
     // crosshair move — so only one of these is ever on at a time.
     var isBoresightingMode by remember { mutableStateOf(false) }
     var isCreepMode by remember { mutableStateOf(false) }
+    val currentReticle = rememberUpdatedState(uiState.reticleXFraction to uiState.reticleYFraction)
+    LaunchedEffect(isLocked) {
+        if (isLocked) {
+            isBoresightingMode = false
+            isCreepMode = false
+        }
+    }
 
     Box(
         modifier = modifier.then(
             if (isBoresightingMode) {
                 Modifier.pointerInput(Unit) {
-                    detectDragGestures { change, _ ->
-                        onReticleDrag(change.position.x / size.width, change.position.y / size.height)
+                    // Relative, not "jump to finger": a finger sliding off a header chip or arrow
+                    // used to teleport the zero to wherever it was. Accumulate locally since the
+                    // saved zero round-trips through settings asynchronously.
+                    var dragX = 0f
+                    var dragY = 0f
+                    detectDragGestures(
+                        onDragStart = {
+                            dragX = currentReticle.value.first
+                            dragY = currentReticle.value.second
+                        },
+                    ) { change, dragAmount ->
+                        change.consume()
+                        dragX = (dragX + dragAmount.x / size.width).coerceIn(0f, 1f)
+                        dragY = (dragY + dragAmount.y / size.height).coerceIn(0f, 1f)
+                        onReticleDrag(dragX, dragY)
                     }
                 }
             } else {
@@ -210,6 +236,8 @@ fun AimOverlay(
             onBrightnessChange = onBrightnessChange,
             zoomRatio = uiState.zoomRatio,
             onZoomChange = onZoomChange,
+            isLocked = isLocked,
+            onToggleLock = onToggleLock,
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
@@ -256,8 +284,23 @@ private fun Header(
     onBrightnessChange: (Float) -> Unit,
     zoomRatio: Float,
     onZoomChange: (Float) -> Unit,
+    isLocked: Boolean,
+    onToggleLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (isLocked) {
+        // Locked: only the lock chip remains, so recoil or a stray grip touch can't flip a mode,
+        // switch profile, or drag the brightness to 5% mid-string.
+        Box(
+            modifier = modifier
+                .padding(WindowInsets.safeDrawing.asPaddingValues())
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .fillMaxWidth(),
+        ) {
+            LockButton(isLocked = true, onToggleLock = onToggleLock)
+        }
+        return
+    }
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
         shape = RectangleShape,
@@ -275,6 +318,7 @@ private fun Header(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                LockButton(isLocked = false, onToggleLock = onToggleLock)
                 LabeledHeaderButton(
                     icon = Icons.Filled.GpsFixed,
                     label = "정렬",
@@ -425,6 +469,44 @@ private fun LabeledHeaderButton(
                 // Default line height adds top/bottom leading beyond the glyphs themselves, which
                 // throws off the icon+label block's visual centering inside the chip — pin it to
                 // the font size so the block's actual ink matches its layout bounds.
+                style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * Same look as [LabeledHeaderButton]. Locking is a plain tap; unlocking needs a long press, so a
+ * bump from recoil can't undo the lock.
+ */
+@Composable
+private fun LockButton(isLocked: Boolean, onToggleLock: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = if (isLocked) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+        },
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier
+            .size(width = 56.dp, height = 52.dp)
+            .pointerInput(isLocked) {
+                detectTapGestures(
+                    onTap = { if (!isLocked) onToggleLock() },
+                    onLongPress = { if (isLocked) onToggleLock() },
+                )
+            },
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+        ) {
+            Icon(if (isLocked) Icons.Filled.Lock else Icons.Filled.LockOpen, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(
+                text = if (isLocked) "잠김" else "잠금",
                 style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
                 maxLines = 1,
             )

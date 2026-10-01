@@ -113,9 +113,14 @@ class AimViewModel(
      */
     private fun nudgeRawZero(dxFraction: Float, dyFraction: Float, zoomRatio: Float) {
         val profile = settingsRepository.settings.value.activeProfile
+        // The stored zero is a fraction at profile.zeroZoomRatio — bring it to the current zoom
+        // first, or adding a current-zoom delta to it (and saving at the current zoom) makes the
+        // zero jump whenever the two zooms differ.
+        val currentX = reprojectFractionForZoom(profile.reticleXFraction, zoomRatio, profile.zeroZoomRatio)
+        val currentY = reprojectFractionForZoom(profile.reticleYFraction, zoomRatio, profile.zeroZoomRatio)
         settingsRepository.updateReticlePosition(
-            (profile.reticleXFraction + dxFraction).coerceIn(0f, 1f),
-            (profile.reticleYFraction + dyFraction).coerceIn(0f, 1f),
+            (currentX + dxFraction).coerceIn(0f, 1f),
+            (currentY + dyFraction).coerceIn(0f, 1f),
             zoomRatio,
         )
     }
