@@ -44,7 +44,7 @@ const val ProfileSheetTestTag = "profile_sheet"
 /**
  * The header's "프로파일" chip opens this bottom sheet — a flat list of saved [AimProfile]s (tap
  * to select) plus an "새 프로파일" row, with a pencil icon on each row that switches to an inline
- * editor for that profile's name and ballistic parameters (see [ProfileEditor]). Replaces the old
+ * editor for that profile's name (see [ProfileEditor]). Replaces the old
  * fixed 화기/수동 `AimMode` toggle with an arbitrary number of named zeros.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +56,6 @@ fun ProfileSheet(
     onAddProfile: () -> String,
     onRenameProfile: (profileId: String, name: String) -> Unit,
     onDeleteProfile: (String) -> Unit,
-    onUpdateProfileBallistics: (profileId: String, muzzleVelocityMps: Float, zeroDistanceM: Float, hobCm: Float, targetRadiusCm: Float) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var editingProfileId by remember { mutableStateOf<String?>(null) }
@@ -72,9 +71,8 @@ fun ProfileSheet(
                 ProfileEditor(
                     profile = editingProfile,
                     canDelete = profiles.size > 1,
-                    onSave = { name, velocity, zero, hob, radius ->
+                    onSave = { name ->
                         onRenameProfile(editingProfile.id, name)
-                        onUpdateProfileBallistics(editingProfile.id, velocity, zero, hob, radius)
                         editingProfileId = null
                     },
                     onDelete = {
@@ -154,23 +152,18 @@ private fun ProfileList(
     }
 }
 
-/** Numeric fields are kept as free-text (rather than a slider/stepper) — HOB and target radius in particular are real-world measurements the user types in from a ruler or a spec sheet, not values there's a sensible range to constrain upfront. */
 @Composable
 private fun ProfileEditor(
     profile: AimProfile,
     canDelete: Boolean,
-    onSave: (name: String, muzzleVelocityMps: Float, zeroDistanceM: Float, hobCm: Float, targetRadiusCm: Float) -> Unit,
+    onSave: (name: String) -> Unit,
     onDelete: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var name by remember(profile.id) { mutableStateOf(profile.name) }
-    var velocityText by remember(profile.id) { mutableStateOf(formatNumber(profile.muzzleVelocityMps)) }
-    var zeroText by remember(profile.id) { mutableStateOf(formatNumber(profile.zeroDistanceM)) }
-    var hobText by remember(profile.id) { mutableStateOf(formatNumber(profile.hobCm)) }
-    var radiusText by remember(profile.id) { mutableStateOf(formatNumber(profile.targetRadiusCm)) }
 
-    // This app is landscape-only, so the visible height is short — five fields plus buttons need to scroll.
+    // This app is landscape-only, so the visible height is short — keep it scrollable.
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -180,38 +173,6 @@ private fun ProfileEditor(
     ) {
         Text("프로파일 편집", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("이름") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(
-            value = velocityText,
-            onValueChange = { velocityText = it },
-            label = { Text("탄속 (m/s)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = zeroText,
-            onValueChange = { zeroText = it },
-            label = { Text("영점거리 (m)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = hobText,
-            onValueChange = { hobText = it },
-            label = { Text("HOB (cm)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = radiusText,
-            onValueChange = { radiusText = it },
-            label = { Text("표적 반경 (cm)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
-        )
 
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onCancel) { Text("취소") }
@@ -220,21 +181,8 @@ private fun ProfileEditor(
             }
             Spacer(Modifier.weight(1f))
             Button(
-                onClick = {
-                    val velocity = velocityText.toFloatOrNull()
-                    val zero = zeroText.toFloatOrNull()
-                    val hob = hobText.toFloatOrNull()
-                    val radius = radiusText.toFloatOrNull()
-                    val isValid = name.isNotBlank() &&
-                        velocity != null && velocity > 0f &&
-                        zero != null && zero > 0f &&
-                        hob != null && hob >= 0f &&
-                        radius != null && radius > 0f
-                    if (isValid) onSave(name, velocity!!, zero!!, hob!!, radius!!)
-                },
+                onClick = { if (name.isNotBlank()) onSave(name) },
             ) { Text("저장") }
         }
     }
 }
-
-private fun formatNumber(value: Float): String = if (value == value.toInt().toFloat()) value.toInt().toString() else value.toString()

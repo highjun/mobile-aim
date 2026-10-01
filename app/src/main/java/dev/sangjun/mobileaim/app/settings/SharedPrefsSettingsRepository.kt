@@ -95,12 +95,6 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
         mutableSettings.value = current.copy(profiles = updated, activeProfileId = newActiveId)
     }
 
-    override fun updateProfileBallistics(profileId: String, muzzleVelocityMps: Float, zeroDistanceM: Float, hobCm: Float, targetRadiusCm: Float) {
-        updateProfile(profileId) {
-            it.copy(muzzleVelocityMps = muzzleVelocityMps, zeroDistanceM = zeroDistanceM, hobCm = hobCm, targetRadiusCm = targetRadiusCm)
-        }
-    }
-
     override fun updateBrightness(brightness: Float) {
         prefs.edit().putFloat(KEY_BRIGHTNESS, brightness).apply()
         mutableSettings.value = mutableSettings.value.copy(brightness = brightness)
@@ -150,10 +144,6 @@ private fun AimProfile.toJson(): JSONObject = JSONObject().apply {
     put("zeroZoomRatio", zeroZoomRatio)
     put("elevationClicks", elevationClicks)
     put("windageClicks", windageClicks)
-    put("muzzleVelocityMps", muzzleVelocityMps)
-    put("zeroDistanceM", zeroDistanceM)
-    put("hobCm", hobCm)
-    put("targetRadiusCm", targetRadiusCm)
 }
 
 private fun JSONObject.toAimProfile(): AimProfile = AimProfile(
@@ -166,8 +156,4 @@ private fun JSONObject.toAimProfile(): AimProfile = AimProfile(
     zeroZoomRatio = optDouble("zeroZoomRatio", 1.0).toFloat(),
     elevationClicks = getInt("elevationClicks"),
     windageClicks = getInt("windageClicks"),
-    muzzleVelocityMps = getDouble("muzzleVelocityMps").toFloat(),
-    zeroDistanceM = getDouble("zeroDistanceM").toFloat(),
-    hobCm = getDouble("hobCm").toFloat(),
-    targetRadiusCm = getDouble("targetRadiusCm").toFloat(),
 )

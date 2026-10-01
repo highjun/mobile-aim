@@ -59,7 +59,6 @@ class AimOverlayManualGunScreenshotTest {
                         onAddProfile = { "" },
                         onRenameProfile = { _, _ -> },
                         onDeleteProfile = {},
-                        onUpdateProfileBallistics = { _, _, _, _, _ -> },
                         onCreepUp = {},
                         onCreepDown = {},
                         onCreepLeft = {},

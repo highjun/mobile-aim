@@ -162,7 +162,6 @@ fun MainScreen(
             onAddProfile = aimViewModel::onAddProfile,
             onRenameProfile = aimViewModel::onRenameProfile,
             onDeleteProfile = aimViewModel::onDeleteProfile,
-            onUpdateProfileBallistics = aimViewModel::onUpdateProfileBallistics,
             onCreepUp = aimViewModel::onCreepUp,
             onCreepDown = aimViewModel::onCreepDown,
             onCreepLeft = aimViewModel::onCreepLeft,

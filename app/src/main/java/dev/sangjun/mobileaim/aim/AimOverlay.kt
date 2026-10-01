@@ -134,7 +134,6 @@ fun AimOverlay(
     onAddProfile: () -> String,
     onRenameProfile: (profileId: String, name: String) -> Unit,
     onDeleteProfile: (String) -> Unit,
-    onUpdateProfileBallistics: (profileId: String, muzzleVelocityMps: Float, zeroDistanceM: Float, hobCm: Float, targetRadiusCm: Float) -> Unit,
     onCreepUp: () -> Unit,
     onCreepDown: () -> Unit,
     onCreepLeft: () -> Unit,
@@ -250,7 +249,6 @@ fun AimOverlay(
             onAddProfile = onAddProfile,
             onRenameProfile = onRenameProfile,
             onDeleteProfile = onDeleteProfile,
-            onUpdateProfileBallistics = onUpdateProfileBallistics,
             onDismiss = onDismissProfileSheet,
         )
     }

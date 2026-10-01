@@ -39,18 +39,4 @@ class SettingsMigrationTest {
 
         assertEquals(FirearmProfileId, result.activeProfileId)
     }
-
-    @Test
-    fun `default profiles carry the ballistic parameters new in v1`() {
-        val result = migrateAimModeToProfiles(aimModeOrdinal = 0, reticleXFraction = 0.5f, reticleYFraction = 0.5f)
-
-        val firearm = result.profiles.first { it.id == FirearmProfileId }
-        assertTrue("firearm zero distance should be positive", firearm.zeroDistanceM > 0f)
-        assertTrue("firearm HOB should be positive", firearm.hobCm > 0f)
-        assertTrue("firearm target radius should be positive", firearm.targetRadiusCm > 0f)
-
-        val manualGun = result.profiles.first { it.id == ManualGunProfileId }
-        assertTrue("manual gun zero distance should be positive", manualGun.zeroDistanceM > 0f)
-        assertTrue("manual gun velocity should be far below the firearm's", manualGun.muzzleVelocityMps < firearm.muzzleVelocityMps)
-    }
 }

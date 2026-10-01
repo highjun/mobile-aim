@@ -30,9 +30,6 @@ interface ISettingsRepository {
     /** Removes a profile; no-op if it's the last remaining one (there must always be at least one). If it was active, the first remaining profile becomes active. */
     fun deleteProfile(profileId: String)
 
-    /** Overwrites a profile's ballistic parameters in place — no-op if [profileId] doesn't match any saved profile. */
-    fun updateProfileBallistics(profileId: String, muzzleVelocityMps: Float, zeroDistanceM: Float, hobCm: Float, targetRadiusCm: Float)
-
     /** Persists the manual screen brightness (0..1) the app forces on its window. */
     fun updateBrightness(brightness: Float)
 }

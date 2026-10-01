@@ -67,7 +67,6 @@ class AimOverlayBoresightingScreenshotTest {
                         onAddProfile = { "" },
                         onRenameProfile = { _, _ -> },
                         onDeleteProfile = {},
-                        onUpdateProfileBallistics = { _, _, _, _, _ -> },
                         onCreepUp = {},
                         onCreepDown = {},
                         onCreepLeft = {},

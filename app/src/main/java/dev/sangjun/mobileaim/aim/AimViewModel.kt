@@ -184,9 +184,6 @@ class AimViewModel(
 
     fun onDeleteProfile(profileId: String) = settingsRepository.deleteProfile(profileId)
 
-    fun onUpdateProfileBallistics(profileId: String, muzzleVelocityMps: Float, zeroDistanceM: Float, hobCm: Float, targetRadiusCm: Float) =
-        settingsRepository.updateProfileBallistics(profileId, muzzleVelocityMps, zeroDistanceM, hobCm, targetRadiusCm)
-
     /** Called whenever the preview's stream/layout changes (see [dev.sangjun.mobileaim.app.camera.CameraPreview]'s `onCameraFovReady`). */
     fun onCameraFovAvailable(fov: CameraFov) {
         cameraFovFlow.value = fov
