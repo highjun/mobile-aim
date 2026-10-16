@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ControlCamera
 import androidx.compose.material.icons.filled.DoNotDisturbOn
@@ -144,6 +145,10 @@ fun AimOverlay(
     onBoresightRight: () -> Unit,
     isLocked: Boolean = false,
     onToggleLock: () -> Unit = {},
+    isCameraDiagnosticAvailable: Boolean = false,
+    isCameraDiagnosticMode: Boolean = false,
+    onToggleCameraDiagnosticMode: () -> Unit = {},
+    cameraDiagnosticText: String? = null,
     modifier: Modifier = Modifier,
 ) {
     // Mutually exclusive: dragging edits the raw zero the crosshair isn't even drawn against
@@ -237,8 +242,26 @@ fun AimOverlay(
             onZoomChange = onZoomChange,
             isLocked = isLocked,
             onToggleLock = onToggleLock,
+            isCameraDiagnosticAvailable = isCameraDiagnosticAvailable,
+            isCameraDiagnosticMode = isCameraDiagnosticMode,
+            onToggleCameraDiagnosticMode = onToggleCameraDiagnosticMode,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+
+        // What the camera reports back per frame in diagnostic mode — see CameraDiagnostics.kt.
+        if (cameraDiagnosticText != null) {
+            Text(
+                text = cameraDiagnosticText,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(WindowInsets.safeDrawing.asPaddingValues())
+                    .padding(12.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                    .padding(8.dp),
+            )
+        }
     }
 
     if (isProfileSheetOpen) {
@@ -284,6 +307,9 @@ private fun Header(
     onZoomChange: (Float) -> Unit,
     isLocked: Boolean,
     onToggleLock: () -> Unit,
+    isCameraDiagnosticAvailable: Boolean,
+    isCameraDiagnosticMode: Boolean,
+    onToggleCameraDiagnosticMode: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (isLocked) {
@@ -347,6 +373,14 @@ private fun Header(
                     active = isFocusMode,
                     onClick = onToggleFocusMode,
                 )
+                if (isCameraDiagnosticAvailable) {
+                    LabeledHeaderButton(
+                        icon = Icons.Filled.BugReport,
+                        label = "진단",
+                        active = isCameraDiagnosticMode,
+                        onClick = onToggleCameraDiagnosticMode,
+                    )
+                }
             }
 
             Row(
@@ -391,7 +425,7 @@ private fun ActiveProfileLabel(
 }
 
 /** Discrete zoom presets — a slider needs a free hand to drag precisely, which the shooter doesn't have while holding the gun; a one-tap preset doesn't. */
-private val ZoomPresets = listOf(1f, 2f, 4f)
+private val ZoomPresets = (1..8).map { it.toFloat() }
 
 /** "2x" for whole ratios, "2.5x" for in-between ones a pinch can land on. */
 private fun formatZoom(zoomRatio: Float): String =

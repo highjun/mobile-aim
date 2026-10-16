@@ -1,8 +1,14 @@
 package dev.sangjun.mobileaim.app.camera
 
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CaptureRequest
+import android.util.Log
 import android.view.View
 import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraState
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.ZoomState
@@ -21,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import dev.sangjun.mobileaim.BuildConfig
 import kotlin.math.hypot
 
 /**
@@ -29,14 +36,17 @@ import kotlin.math.hypot
  * screen instead (see [dev.sangjun.mobileaim.app.ui.MainScreen]'s `captureScreenshot`), so there's
  * no raw-sensor-frame use case to bind here.
  */
+@OptIn(ExperimentalCamera2Interop::class)
 @Composable
 fun CameraPreview(
     hasCameraPermission: Boolean,
-    onVideoCaptureReady: (VideoCapture<Recorder>) -> Unit,
+    onVideoCaptureReady: (VideoCapture<Recorder>?) -> Unit,
     onCameraReady: (Camera) -> Unit,
     onCameraFovReady: (CameraFov) -> Unit,
     onCameraError: (Throwable) -> Unit,
     modifier: Modifier = Modifier,
+    isDiagnosticMode: Boolean = false,
+    onDiagnosticSnapshot: (CameraDiagSnapshot) -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -58,7 +68,7 @@ fun CameraPreview(
         modifier = modifier.fillMaxSize(),
     )
 
-    DisposableEffect(hasCameraPermission, previewView, lifecycleOwner) {
+    DisposableEffect(hasCameraPermission, previewView, lifecycleOwner, isDiagnosticMode) {
         var cameraProvider: ProcessCameraProvider? = null
         var focalLengthYPx: Float? = null
         var currentZoomRatio = 1f
@@ -102,6 +112,73 @@ fun CameraPreview(
             publishFov()
         }
 
+        var cameraStateLiveData: LiveData<CameraState>? = null
+        var cameraStateObserver: Observer<CameraState>? = null
+
+        // Diagnostic mode (debug builds only — see CameraDiagnostics.kt) binds Preview alone with
+        // the dot-sight camera settings requested through Camera2Interop. Pinning the main lens is
+        // the one setting a device may refuse outright (the session fails to configure), so on a
+        // camera error the bind is retried once without it and the drop is reported.
+        fun bind(provider: ProcessCameraProvider, pinMainLens: Boolean) {
+            val droppedSettings = if (isDiagnosticMode && !pinMainLens) listOf("렌즈 고정") else emptyList()
+            val logicalCameraInfo = CameraSelector.DEFAULT_BACK_CAMERA.filter(provider.availableCameraInfos).firstOrNull()
+            val logicalCameraId = logicalCameraInfo?.let { Camera2CameraInfo.from(it).cameraId }
+            val mainPhysicalId = if (isDiagnosticMode && pinMainLens && logicalCameraId != null) {
+                findMainPhysicalCameraId(context.getSystemService(CameraManager::class.java), logicalCameraId)
+            } else {
+                null
+            }
+
+            val previewBuilder = Preview.Builder()
+            if (BuildConfig.DEBUG) {
+                val extender = Camera2Interop.Extender(previewBuilder)
+                extender.setSessionCaptureCallback(DiagnosticCaptureCallback(droppedSettings, onDiagnosticSnapshot))
+                if (isDiagnosticMode) {
+                    mainPhysicalId?.let { extender.setPhysicalCameraId(it) }
+                    for ((key, value) in DiagnosticCaptureRequestOptions) extender.setRequestOption(key, value)
+                }
+            }
+            val preview = previewBuilder.build().also {
+                it.setSurfaceProvider(previewView.surfaceProvider)
+            }
+            // Recording is left out of diagnostic mode: binding VideoCapture alongside can make the
+            // device change frame rate or processing, which would muddy what's being measured.
+            val videoCapture = if (isDiagnosticMode) null else VideoCapture.withOutput(Recorder.Builder().build())
+
+            provider.unbindAll()
+            val camera = provider.bindToLifecycle(
+                lifecycleOwner,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                *listOfNotNull(preview, videoCapture).toTypedArray(),
+            )
+            onVideoCaptureReady(videoCapture)
+            onCameraReady(camera)
+
+            zoomStateLiveData?.removeObserver(zoomStateObserver)
+            zoomStateLiveData = camera.cameraInfo.zoomState.also {
+                it.observe(lifecycleOwner, zoomStateObserver)
+            }
+
+            cameraStateObserver?.let { cameraStateLiveData?.removeObserver(it) }
+            if (mainPhysicalId != null) {
+                val observer = Observer<CameraState> { state ->
+                    // Any error counts, recoverable or not: a device that refuses the pin (e.g. Galaxy
+                    // S25 Ultra's HAL never returns the pinned lens's metadata) fails as
+                    // ERROR_CAMERA_DEVICE, which CameraX would otherwise retry forever.
+                    if (state.error != null) {
+                        Log.w(DiagnosticsLogTag, "Pinning physical camera $mainPhysicalId failed: ${state.error}")
+                        bind(provider, pinMainLens = false)
+                    }
+                }
+                cameraStateObserver = observer
+                cameraStateLiveData = camera.cameraInfo.cameraState.also { it.observe(lifecycleOwner, observer) }
+            }
+
+            val cameraId = Camera2CameraInfo.from(camera.cameraInfo).cameraId
+            focalLengthYPx = CameraFovProvider(context).getFocalLengthYPx(cameraId)
+            publishFov()
+        }
+
         if (hasCameraPermission) {
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
             cameraProviderFuture.addListener(
@@ -109,30 +186,7 @@ fun CameraPreview(
                     try {
                         val provider = cameraProviderFuture.get()
                         cameraProvider = provider
-
-                        val preview = Preview.Builder().build().also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
-                        }
-                        val recorder = Recorder.Builder().build()
-                        val videoCapture = VideoCapture.withOutput(recorder)
-
-                        provider.unbindAll()
-                        val camera = provider.bindToLifecycle(
-                            lifecycleOwner,
-                            CameraSelector.DEFAULT_BACK_CAMERA,
-                            preview,
-                            videoCapture,
-                        )
-                        onVideoCaptureReady(videoCapture)
-                        onCameraReady(camera)
-
-                        zoomStateLiveData = camera.cameraInfo.zoomState.also {
-                            it.observe(lifecycleOwner, zoomStateObserver)
-                        }
-
-                        val cameraId = Camera2CameraInfo.from(camera.cameraInfo).cameraId
-                        focalLengthYPx = CameraFovProvider(context).getFocalLengthYPx(cameraId)
-                        publishFov()
+                        bind(provider, pinMainLens = true)
                     } catch (error: Exception) {
                         onCameraError(error)
                     }
@@ -145,7 +199,15 @@ fun CameraPreview(
             previewView.removeOnLayoutChangeListener(layoutListener)
             previewView.previewStreamState.removeObserver(streamStateObserver)
             zoomStateLiveData?.removeObserver(zoomStateObserver)
+            cameraStateObserver?.let { cameraStateLiveData?.removeObserver(it) }
             cameraProvider?.unbindAll()
         }
     }
+}
+
+/** [DiagnosticCaptureRequestOptions] mixes value types, so its keys come in star-projected — the pairs are built key-with-matching-value, which makes the cast safe. */
+@OptIn(ExperimentalCamera2Interop::class)
+@Suppress("UNCHECKED_CAST")
+private fun Camera2Interop.Extender<*>.setRequestOption(key: CaptureRequest.Key<*>, value: Any) {
+    setCaptureRequestOption(key as CaptureRequest.Key<Any>, value)
 }
