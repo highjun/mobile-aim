@@ -37,12 +37,12 @@ gradle.taskGraph.whenReady {
 
 android {
     namespace = "dev.sangjun.mobileaim"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.sangjun.mobileaim"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         // CI passes -PversionCode=1000+<github.run_number> so every auto-published build gets a
         // fresh, strictly-increasing code without committing anything back to the repo — offset
         // by 1000 to stay clear of versionCode 1, which the first release used (uploaded manually,
