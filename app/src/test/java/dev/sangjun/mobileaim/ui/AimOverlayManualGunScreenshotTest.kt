@@ -44,6 +44,7 @@ class AimOverlayManualGunScreenshotTest {
                             brightness = 0.8f,
                             profiles = DefaultAimProfiles,
                             activeProfileId = profile.id,
+                            isZeroed = true,
                         ),
                         onReticleDrag = { _, _ -> },
                         onToggleLogging = {},
@@ -63,10 +64,6 @@ class AimOverlayManualGunScreenshotTest {
                         onCreepDown = {},
                         onCreepLeft = {},
                         onCreepRight = {},
-                        onBoresightUp = {},
-                        onBoresightDown = {},
-                        onBoresightLeft = {},
-                        onBoresightRight = {},
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

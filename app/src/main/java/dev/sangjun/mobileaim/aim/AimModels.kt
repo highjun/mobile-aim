@@ -4,17 +4,17 @@ import dev.sangjun.mobileaim.app.settings.AimProfile
 import dev.sangjun.mobileaim.app.settings.DefaultAimProfiles
 
 /**
- * Reticle state as fractions (0..1) of the camera preview.
+ * Reticle state as fractions (0..1) of the camera preview, for the active profile at [zoomLevel].
  *
- * [reticleXFraction]/[reticleYFraction]: the active profile's bore-sighted zero — what
- * [AimOverlay] draws the zeroing-mode dot at, and what dragging while zeroing edits (see
- * [AimViewModel.onReticleDrag]). Unaffected by [elevationClicks]/[windageClicks].
+ * [reticleXFraction]/[reticleYFraction]: where the reticle was last dragged to at this zoom (see
+ * [dev.sangjun.mobileaim.app.settings.ZoomZero]) — screen center when [isZeroed] is false.
+ * Unaffected by [elevationClicks]/[windageClicks].
  *
- * [effectiveReticleXFraction]/[effectiveReticleYFraction]: the zero plus the click adjustment
- * applied (see [clicksToFraction]) — where the aiming reticle is actually drawn, and what
- * [AimViewModel.logCaptureSnapshot] records. Equals the raw zero whenever [isCreepAvailable] is
- * false (no [dev.sangjun.mobileaim.app.camera.CameraFov] yet to convert clicks into a screen
- * fraction with).
+ * [effectiveReticleXFraction]/[effectiveReticleYFraction]: that position plus the click adjustment
+ * (see [clicksToFraction]) — where the reticle is actually drawn, and what
+ * [AimViewModel.logCaptureSnapshot] records. Equals the dragged position whenever
+ * [isCreepAvailable] is false (no [dev.sangjun.mobileaim.app.camera.CameraFov] yet to convert
+ * clicks into a screen fraction with).
  */
 data class AimUiState(
     val reticleXFraction: Float = 0.5f,
@@ -27,8 +27,10 @@ data class AimUiState(
     val isLoggingActive: Boolean = false,
     /** Manual screen brightness (0..1) the app forces on its window, replacing system auto-brightness. */
     val brightness: Float = 0.8f,
-    /** The header's currently selected zoom chip (1x/2x/4x) — see [dev.sangjun.mobileaim.aim.AimViewModel.onZoomChange]. Not the same as [dev.sangjun.mobileaim.app.camera.CameraFov.zoomRatio], which is what CameraX actually settled on. */
-    val zoomRatio: Float = 1f,
+    /** The header's selected zoom level (1..8, see [dev.sangjun.mobileaim.app.settings.ZoomLevels]) — picks which zero is in use. Not the same as [dev.sangjun.mobileaim.app.camera.CameraFov.zoomRatio], which is what CameraX actually settled on. */
+    val zoomLevel: Int = 1,
+    /** Whether the active profile has a zero at [zoomLevel] — shooting mode is unavailable until it does. */
+    val isZeroed: Boolean = false,
     val profiles: List<AimProfile> = DefaultAimProfiles,
     val activeProfileId: String = DefaultAimProfiles.first().id,
     /** Whether a [dev.sangjun.mobileaim.app.camera.CameraFov] is available yet — gates the creep pad's arrow buttons (see [AimOverlay]) so a press doesn't silently do nothing. */

@@ -6,17 +6,18 @@ interface ISettingsRepository {
     val settings: StateFlow<MarkerSettings>
 
     /**
-     * Updates the active profile's bore-sighted zero — see [AimProfile.reticleXFraction]/
-     * [AimProfile.reticleYFraction] — together with [zoomRatio], the zoom that was active when
-     * [xFraction]/[yFraction] were captured (see [AimProfile.zeroZoomRatio]). Also resets
-     * [AimProfile.elevationClicks]/[AimProfile.windageClicks] to 0: they were dialed in relative to
-     * the *old* zero, so they'd silently offset the reticle away from wherever this new zero was
-     * just set to.
+     * Sets the active profile's zero for [zoomLevel] to the dragged position [xFraction]/[yFraction]
+     * and resets that zoom's click counts to 0 — the drag is the new starting point, and clicks
+     * dialed in before it would otherwise silently offset the reticle away from where it was just
+     * dragged to (see [ZoomZero]).
      */
-    fun updateReticlePosition(xFraction: Float, yFraction: Float, zoomRatio: Float)
+    fun setZero(zoomLevel: Int, xFraction: Float, yFraction: Float)
 
-    /** Nudges the active profile's click counts — see [AimProfile.elevationClicks]/[AimProfile.windageClicks]. */
-    fun updateClicks(elevationDelta: Int, windageDelta: Int)
+    /**
+     * Nudges the active profile's click counts for [zoomLevel] (see [ZoomZero]). A zoom that has
+     * no zero yet starts from screen center.
+     */
+    fun updateClicks(zoomLevel: Int, elevationDelta: Int, windageDelta: Int)
 
     /** Switches which profile is active — no-op if [profileId] doesn't match any saved profile. */
     fun setActiveProfile(profileId: String)

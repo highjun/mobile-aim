@@ -25,17 +25,3 @@ fun clicksToFraction(clicks: Int, focalLengthPx: Float, referenceLengthPx: Float
     val angleRad = clicks * MoaPerClick * RadiansPerMoa
     return focalLengthPx * tan(angleRad) / referenceLengthPx
 }
-
-/**
- * Reprojects a screen fraction (along one axis) captured at [zeroZoomRatio] onto what it should be
- * at [currentZoomRatio] instead — see
- * [dev.sangjun.mobileaim.app.settings.AimProfile.zeroZoomRatio]'s KDoc for why a raw fraction only
- * means the same real-world point at the zoom it was captured at. Zooming crops-and-magnifies the
- * sensor symmetrically around the frame's optical center (0.5), so the offset from there scales by
- * exactly `currentZoomRatio / zeroZoomRatio`; at [currentZoomRatio] == [zeroZoomRatio] this is the
- * identity (returns [fraction] unchanged).
- */
-fun reprojectFractionForZoom(fraction: Float, currentZoomRatio: Float, zeroZoomRatio: Float): Float {
-    val ratio = currentZoomRatio / zeroZoomRatio
-    return 0.5f + ratio * (fraction - 0.5f)
-}

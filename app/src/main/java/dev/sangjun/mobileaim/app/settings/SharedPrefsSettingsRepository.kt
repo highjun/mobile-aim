@@ -45,23 +45,18 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
         )
     }
 
-    override fun updateReticlePosition(xFraction: Float, yFraction: Float, zoomRatio: Float) {
-        // Click adjustments were dialed in relative to the *old* zero, so they no longer mean
-        // anything once the raw zero moves — see the KDoc on ISettingsRepository.updateReticlePosition.
-        updateActiveProfile {
-            it.copy(
-                reticleXFraction = xFraction,
-                reticleYFraction = yFraction,
-                zeroZoomRatio = zoomRatio,
-                elevationClicks = 0,
-                windageClicks = 0,
-            )
-        }
+    override fun setZero(zoomLevel: Int, xFraction: Float, yFraction: Float) {
+        updateActiveProfile { it.copy(zeros = it.zeros + (zoomLevel to ZoomZero(xFraction, yFraction))) }
     }
 
-    override fun updateClicks(elevationDelta: Int, windageDelta: Int) {
+    override fun updateClicks(zoomLevel: Int, elevationDelta: Int, windageDelta: Int) {
         updateActiveProfile {
-            it.copy(elevationClicks = it.elevationClicks + elevationDelta, windageClicks = it.windageClicks + windageDelta)
+            val zero = it.zeroFor(zoomLevel) ?: ZoomZero()
+            val updated = zero.copy(
+                elevationClicks = zero.elevationClicks + elevationDelta,
+                windageClicks = zero.windageClicks + windageDelta,
+            )
+            it.copy(zeros = it.zeros + (zoomLevel to updated))
         }
     }
 
@@ -139,21 +134,44 @@ private fun parseProfiles(json: String): List<AimProfile> {
 private fun AimProfile.toJson(): JSONObject = JSONObject().apply {
     put("id", id)
     put("name", name)
-    put("reticleXFraction", reticleXFraction)
-    put("reticleYFraction", reticleYFraction)
-    put("zeroZoomRatio", zeroZoomRatio)
-    put("elevationClicks", elevationClicks)
-    put("windageClicks", windageClicks)
+    put("zeros", JSONObject().apply {
+        for ((zoomLevel, zero) in zeros) {
+            put(
+                zoomLevel.toString(),
+                JSONObject().apply {
+                    put("xFraction", zero.xFraction)
+                    put("yFraction", zero.yFraction)
+                    put("elevationClicks", zero.elevationClicks)
+                    put("windageClicks", zero.windageClicks)
+                },
+            )
+        }
+    })
 }
 
-private fun JSONObject.toAimProfile(): AimProfile = AimProfile(
-    id = getString("id"),
-    name = getString("name"),
-    reticleXFraction = getDouble("reticleXFraction").toFloat(),
-    reticleYFraction = getDouble("reticleYFraction").toFloat(),
-    // optDouble, not getDouble: profiles saved before zoom existed have no such key — 1f (as if
-    // set at 1x) is exactly right for those, since zoom didn't exist yet.
-    zeroZoomRatio = optDouble("zeroZoomRatio", 1.0).toFloat(),
-    elevationClicks = getInt("elevationClicks"),
-    windageClicks = getInt("windageClicks"),
-)
+/**
+ * Profiles saved before per-zoom zeros have no `zeros` object, just one zero plus the zoom it was
+ * captured at (and, older still, no `zeroZoomRatio` at all — 1x, since zoom didn't exist yet);
+ * [legacyZeroToZoomZeros] files that zero under its zoom. Read on every load, so no schema bump.
+ */
+private fun JSONObject.toAimProfile(): AimProfile {
+    val zeros = optJSONObject("zeros")?.let { json ->
+        json.keys().asSequence().mapNotNull { key ->
+            val zoomLevel = key.toIntOrNull() ?: return@mapNotNull null
+            val zero = json.getJSONObject(key)
+            zoomLevel to ZoomZero(
+                xFraction = zero.getDouble("xFraction").toFloat(),
+                yFraction = zero.getDouble("yFraction").toFloat(),
+                elevationClicks = zero.getInt("elevationClicks"),
+                windageClicks = zero.getInt("windageClicks"),
+            )
+        }.toMap()
+    } ?: legacyZeroToZoomZeros(
+        reticleXFraction = optDouble("reticleXFraction", 0.5).toFloat(),
+        reticleYFraction = optDouble("reticleYFraction", 0.5).toFloat(),
+        zeroZoomRatio = optDouble("zeroZoomRatio", 1.0).toFloat(),
+        elevationClicks = optInt("elevationClicks", 0),
+        windageClicks = optInt("windageClicks", 0),
+    )
+    return AimProfile(id = getString("id"), name = getString("name"), zeros = zeros)
+}

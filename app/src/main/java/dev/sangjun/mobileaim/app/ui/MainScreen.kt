@@ -22,9 +22,6 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -37,8 +34,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import dev.sangjun.mobileaim.BuildConfig
@@ -90,20 +85,14 @@ fun MainScreen(
     val onCameraReady = remember { { boundCamera: Camera -> camera = boundCamera } }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
     var isProfileSheetOpen by remember { mutableStateOf(false) }
-    var isLocked by remember { mutableStateOf(false) }
     val uiState by aimViewModel.uiState.collectAsState()
 
-    // Applies the header's chosen zoom chip to the actual bound camera — clamped to what the
-    // hardware reports, since a discrete preset (see AimOverlay's zoom chips) can exceed a given
-    // device's max zoom ratio.
-    LaunchedEffect(uiState.zoomRatio, camera) {
+    // Applies the header's chosen zoom level to the actual bound camera — clamped to what the
+    // hardware reports, in case a device's max zoom ratio is below 8x.
+    LaunchedEffect(uiState.zoomLevel, camera) {
         val boundCamera = camera ?: return@LaunchedEffect
         val zoomState = boundCamera.cameraInfo.zoomState.value ?: return@LaunchedEffect
-        val clamped = uiState.zoomRatio.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
-        boundCamera.cameraControl.setZoomRatio(clamped)
-        // Keep the header label honest (and pinch-out responsive) on devices whose max is below
-        // what was asked for.
-        if (clamped != uiState.zoomRatio) aimViewModel.onZoomChange(clamped)
+        boundCamera.cameraControl.setZoomRatio(uiState.zoomLevel.toFloat().coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio))
     }
 
     // Force the manual brightness onto the host Activity's window; setting an explicit 0..1 value
@@ -132,8 +121,7 @@ fun MainScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .then(if (isLocked) Modifier else Modifier.pinchToZoom(aimViewModel::onPinchZoom)),
+            .background(Color.Black),
     ) {
         CameraPreview(
             hasCameraPermission = hasCameraPermission,
@@ -172,38 +160,12 @@ fun MainScreen(
             onCreepDown = aimViewModel::onCreepDown,
             onCreepLeft = aimViewModel::onCreepLeft,
             onCreepRight = aimViewModel::onCreepRight,
-            onBoresightUp = aimViewModel::onBoresightUp,
-            onBoresightDown = aimViewModel::onBoresightDown,
-            onBoresightLeft = aimViewModel::onBoresightLeft,
-            onBoresightRight = aimViewModel::onBoresightRight,
-            isLocked = isLocked,
-            onToggleLock = { isLocked = !isLocked },
             isCameraDiagnosticAvailable = BuildConfig.DEBUG,
             isCameraDiagnosticMode = isCameraDiagnosticMode,
             onToggleCameraDiagnosticMode = { isCameraDiagnosticMode = !isCameraDiagnosticMode },
             cameraDiagnosticText = if (isCameraDiagnosticMode) cameraDiagnosticText else null,
             modifier = Modifier.fillMaxSize(),
         )
-    }
-}
-
-/**
- * Two-finger pinch anywhere on screen → [onZoom] with the frame-to-frame zoom factor. Listens on
- * [PointerEventPass.Initial] so it sees the gesture before [AimOverlay]'s one-finger reticle drag
- * can consume it, and only consumes events while two or more fingers are down — a single-finger
- * drag still reaches the overlay untouched.
- */
-private fun Modifier.pinchToZoom(onZoom: (Float) -> Unit): Modifier = pointerInput(Unit) {
-    awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        do {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            if (event.changes.count { it.pressed } >= 2) {
-                val zoom = event.calculateZoom()
-                if (zoom != 1f) onZoom(zoom)
-                event.changes.forEach { it.consume() }
-            }
-        } while (event.changes.any { it.pressed })
     }
 }
 

@@ -32,8 +32,7 @@ class SharedPrefsSettingsRepositoryMigrationTest {
 
         assertEquals(2, settings.profiles.size)
         assertEquals(ManualGunProfileId, settings.activeProfileId)
-        assertEquals(0.44f, settings.activeProfile.reticleXFraction, 0f)
-        assertEquals(0.58f, settings.activeProfile.reticleYFraction, 0f)
+        assertEquals(ZoomZero(0.44f, 0.58f, 0, 0), settings.activeProfile.zeroFor(1))
         assertEquals(1, prefs.getInt("settings_schema_version", 0))
         // Old keys are left in place, not deleted, in case the migration needs to re-run.
         assertTrue(prefs.contains("aim_mode"))
@@ -63,16 +62,15 @@ class SharedPrefsSettingsRepositoryMigrationTest {
     }
 
     /**
-     * A v1 profile JSON blob saved before zoom existed has no `zeroZoomRatio` key at all — reading
-     * it back must default to `1f` (equivalent to having been set at 1x, which is exactly what
-     * happened), not crash on a missing key.
+     * A v1 profile JSON blob saved before zoom existed has no `zeroZoomRatio` key at all — its zero
+     * must land in the 1x slot (zoom didn't exist yet), not crash on a missing key.
      */
     @Test
-    fun `reads a pre-zoom v1 profile without a zeroZoomRatio key as 1x`() {
+    fun `reads a pre-zoom v1 profile without a zeroZoomRatio key into the 1x slot`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = context.getSharedPreferences("mobileaim_settings", Context.MODE_PRIVATE)
         val profileJson = """
-            {"id":"$FirearmProfileId","name":"화기","reticleXFraction":0.5,"reticleYFraction":0.5,
+            {"id":"$FirearmProfileId","name":"화기","reticleXFraction":0.45,"reticleYFraction":0.5,
              "elevationClicks":0,"windageClicks":0,"muzzleVelocityMps":920.0,"zeroDistanceM":50.0,
              "hobCm":4.0,"targetRadiusCm":38.0}
         """.trimIndent()
@@ -84,6 +82,25 @@ class SharedPrefsSettingsRepositoryMigrationTest {
 
         val settings = SharedPrefsSettingsRepository(context).settings.value
 
-        assertEquals(1f, settings.activeProfile.zeroZoomRatio, 0f)
+        assertEquals(mapOf(1 to ZoomZero(0.45f, 0.5f, 0, 0)), settings.activeProfile.zeros)
+    }
+
+    @Test
+    fun `reads a single-zero profile saved with zeroZoomRatio into that zoom's slot`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("mobileaim_settings", Context.MODE_PRIVATE)
+        val profileJson = """
+            {"id":"$FirearmProfileId","name":"화기","reticleXFraction":0.52,"reticleYFraction":0.41,
+             "zeroZoomRatio":4.0,"elevationClicks":3,"windageClicks":-2}
+        """.trimIndent()
+        prefs.edit()
+            .putInt("settings_schema_version", 1)
+            .putString("profiles", "[$profileJson]")
+            .putString("active_profile_id", FirearmProfileId)
+            .apply()
+
+        val settings = SharedPrefsSettingsRepository(context).settings.value
+
+        assertEquals(mapOf(4 to ZoomZero(0.52f, 0.41f, 3, -2)), settings.activeProfile.zeros)
     }
 }

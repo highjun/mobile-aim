@@ -35,8 +35,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ZoomIn
@@ -64,6 +62,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import dev.sangjun.mobileaim.app.settings.ZoomLevels
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 
@@ -77,46 +76,28 @@ private const val MaxBrightness = 1f
 private const val CreepInitialRepeatDelayMillis = 400L
 private const val CreepRepeatIntervalMillis = 100L
 
+/** The two header modes — see [AimOverlay]'s KDoc. */
+private enum class AimMode { Zeroing, Shooting }
+
 /**
- * v1: no vision, no pose estimation. Each [dev.sangjun.mobileaim.app.settings.AimProfile] carries
- * its own bore-sighted zero the user drags (or nudges — see [onBoresightUp]) onto their laser
- * bore-sighter, plus a click-based fine adjustment dialed in after a confirmation shot (see
- * [CreepPad]). Those are two separate header buttons/modes, not one toggle, because they show a
- * different reticle:
+ * v1: no vision, no pose estimation. Each [dev.sangjun.mobileaim.app.settings.AimProfile] is one
+ * gun with a separate zero per zoom level ([AimUiState.zoomLevel]). The header's [ModeSegmentedControl]
+ * switches between two modes:
  *
- * - "정렬" ([isBoresightingMode], boresighting): dragging moves the raw zero — held completely
- *   fixed otherwise, so an incidental touch mid-shake-test can't nudge it. The reticle is always a
- *   plain translucent dot at the raw zero (a single filled blob is easier to line up precisely with
- *   an actual laser dot than the thin outer ring of the aiming reticle would be). The [CreepPad]
- *   arrow pad is also shown here (wired to
- *   [onBoresightUp]/[onBoresightDown]/[onBoresightLeft]/[onBoresightRight] instead of the creep
- *   callbacks) as a finer-grained alternative to dragging — it nudges the same raw zero by one
- *   click's worth of screen distance per press, without touching
- *   [AimUiState.elevationClicks]/[AimUiState.windageClicks] at all, so nothing to read out. Moving
- *   the raw zero, whether by drag or by this pad, resets any click adjustment from a prior "영점"
- *   session back to 0 (see [dev.sangjun.mobileaim.app.settings.ISettingsRepository.updateReticlePosition])
- *   — it was dialed in relative to the zero that just moved, so keeping it would silently offset
- *   the crosshair away from wherever the zero just landed.
- * - "영점" ([isCreepMode], zeroing): shows the normal aiming crosshair (below) so the creep pad's
- *   arrows have something to visibly move — a merged mode would either hide the crosshair the pad
- *   is supposed to move, or let a drag land mid-creep and silently overwrite the zero.
+ * - "영점" (zeroing): dragging moves the current zoom's zero — onto the laser bore-sighter's dot or
+ *   straight onto a group of hits — and the [CreepPad] fine-tunes it by clicks after a
+ *   confirmation group. While a finger is dragging, the reticle turns into a plain translucent dot
+ *   (a single filled blob lines up with a laser dot more precisely than the ring does); otherwise
+ *   the aiming reticle stays visible so the pad's clicks have something to visibly move. A drag
+ *   starts from the reticle's current position (relative — a finger landing elsewhere doesn't
+ *   teleport it) and resets that zoom's clicks (see
+ *   [dev.sangjun.mobileaim.app.settings.ISettingsRepository.setZero]).
+ * - "사격" (shooting): the zero is fixed and the gun/zoom pickers are disabled, so recoil or a grip
+ *   touch can't swap the zero mid-string; brightness, logging and capture still work. Unavailable
+ *   until the current zoom has a zero ([AimUiState.isZeroed]); leaving it back to "영점" needs a
+ *   long press for the same reason.
  *
- * The two are mutually exclusive (turning one on turns the other off) since a translucent dot has
- * nothing for creep clicks to visibly move, and the crosshair isn't meant to be dragged directly.
- *
- * Otherwise (neither mode on) the reticle is a ring with a crosshair stroke growing outward from
- * each of the ring's four cardinal points, plus a translucent center dot (see [drawRingCrosshair]).
- * The dot's alpha is what keeps the actual point of aim visible underneath it — the same idea as a
- * real holosight's glass being translucent, just faked digitally instead. The reticle itself is
- * drawn at the *effective* position — zero plus click adjustment (see
- * [AimUiState.effectiveReticleXFraction]/[AimUiState.effectiveReticleYFraction]) — and that's also
- * what's shown (and adjustable via the creep pad) while [isCreepMode] is on.
- *
- * Everything else lives in the top [Header] bar (this app is landscape-only, but rotates freely
- * between the two landscape orientations so the bar always sits at the physical top — see the
- * manifest's `sensorLandscape`). The header's active-profile label (see [ActiveProfileLabel]) opens
- * [ProfileSheet] — [isProfileSheetOpen] is hoisted (not internal state like
- * [isBoresightingMode]/[isCreepMode]) so it can be driven directly in tests.
+ * At a zoom with no zero yet, the reticle sits at screen center labelled "영점 없음".
  */
 @Composable
 fun AimOverlay(
@@ -127,7 +108,7 @@ fun AimOverlay(
     isFocusMode: Boolean,
     onToggleFocusMode: () -> Unit,
     onBrightnessChange: (Float) -> Unit,
-    onZoomChange: (Float) -> Unit,
+    onZoomChange: (Int) -> Unit,
     isProfileSheetOpen: Boolean,
     onOpenProfileSheet: () -> Unit,
     onDismissProfileSheet: () -> Unit,
@@ -139,34 +120,20 @@ fun AimOverlay(
     onCreepDown: () -> Unit,
     onCreepLeft: () -> Unit,
     onCreepRight: () -> Unit,
-    onBoresightUp: () -> Unit,
-    onBoresightDown: () -> Unit,
-    onBoresightLeft: () -> Unit,
-    onBoresightRight: () -> Unit,
-    isLocked: Boolean = false,
-    onToggleLock: () -> Unit = {},
     isCameraDiagnosticAvailable: Boolean = false,
     isCameraDiagnosticMode: Boolean = false,
     onToggleCameraDiagnosticMode: () -> Unit = {},
     cameraDiagnosticText: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    // Mutually exclusive: dragging edits the raw zero the crosshair isn't even drawn against
-    // (see the dot/crosshair split below), and the creep pad's whole point is to watch the
-    // crosshair move — so only one of these is ever on at a time.
-    var isBoresightingMode by remember { mutableStateOf(false) }
-    var isCreepMode by remember { mutableStateOf(false) }
-    val currentReticle = rememberUpdatedState(uiState.reticleXFraction to uiState.reticleYFraction)
-    LaunchedEffect(isLocked) {
-        if (isLocked) {
-            isBoresightingMode = false
-            isCreepMode = false
-        }
-    }
+    var mode by remember { mutableStateOf(AimMode.Zeroing) }
+    var isDragging by remember { mutableStateOf(false) }
+    val currentReticle = rememberUpdatedState(uiState.effectiveReticleXFraction to uiState.effectiveReticleYFraction)
+    val isZeroing = mode == AimMode.Zeroing
 
     Box(
         modifier = modifier.then(
-            if (isBoresightingMode) {
+            if (isZeroing) {
                 Modifier.pointerInput(Unit) {
                     // Relative, not "jump to finger": a finger sliding off a header chip or arrow
                     // used to teleport the zero to wherever it was. Accumulate locally since the
@@ -177,7 +144,10 @@ fun AimOverlay(
                         onDragStart = {
                             dragX = currentReticle.value.first
                             dragY = currentReticle.value.second
+                            isDragging = true
                         },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false },
                     ) { change, dragAmount ->
                         change.consume()
                         dragX = (dragX + dragAmount.x / size.width).coerceIn(0f, 1f)
@@ -191,27 +161,36 @@ fun AimOverlay(
         ),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            if (isBoresightingMode) {
-                val zeroCenter = Offset(uiState.reticleXFraction * size.width, uiState.reticleYFraction * size.height)
-                drawZeroingDot(zeroCenter)
-            } else {
-                val effectiveCenter = Offset(
-                    uiState.effectiveReticleXFraction * size.width,
-                    uiState.effectiveReticleYFraction * size.height,
+            val center = Offset(uiState.effectiveReticleXFraction * size.width, uiState.effectiveReticleYFraction * size.height)
+            if (isDragging) drawZeroingDot(center) else drawRingCrosshair(center)
+        }
+
+        if (!uiState.isZeroed) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(top = 120.dp),
+            ) {
+                Text(
+                    text = "${uiState.zoomLevel}x 영점 없음",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 )
-                drawRingCrosshair(effectiveCenter)
             }
         }
 
-        if (isBoresightingMode || isCreepMode) {
+        if (isZeroing) {
             CreepPad(
-                elevationClicks = if (isCreepMode) uiState.elevationClicks else 0,
-                windageClicks = if (isCreepMode) uiState.windageClicks else 0,
+                elevationClicks = uiState.elevationClicks,
+                windageClicks = uiState.windageClicks,
                 isEnabled = uiState.isCreepAvailable,
-                onCreepUp = if (isCreepMode) onCreepUp else onBoresightUp,
-                onCreepDown = if (isCreepMode) onCreepDown else onBoresightDown,
-                onCreepLeft = if (isCreepMode) onCreepLeft else onBoresightLeft,
-                onCreepRight = if (isCreepMode) onCreepRight else onBoresightRight,
+                onCreepUp = onCreepUp,
+                onCreepDown = onCreepDown,
+                onCreepLeft = onCreepLeft,
+                onCreepRight = onCreepRight,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp),
@@ -219,18 +198,11 @@ fun AimOverlay(
         }
 
         Header(
+            mode = mode,
+            isZeroed = uiState.isZeroed,
+            onModeChange = { mode = it },
             activeProfileName = uiState.activeProfileName,
             onOpenProfileSheet = onOpenProfileSheet,
-            isBoresightingMode = isBoresightingMode,
-            onToggleBoresightingMode = {
-                isBoresightingMode = !isBoresightingMode
-                if (isBoresightingMode) isCreepMode = false
-            },
-            isCreepMode = isCreepMode,
-            onToggleCreepMode = {
-                isCreepMode = !isCreepMode
-                if (isCreepMode) isBoresightingMode = false
-            },
             isLoggingActive = uiState.isLoggingActive,
             onToggleLogging = onToggleLogging,
             onCaptureClick = onCaptureClick,
@@ -238,10 +210,8 @@ fun AimOverlay(
             onToggleFocusMode = onToggleFocusMode,
             brightness = uiState.brightness,
             onBrightnessChange = onBrightnessChange,
-            zoomRatio = uiState.zoomRatio,
+            zoomLevel = uiState.zoomLevel,
             onZoomChange = onZoomChange,
-            isLocked = isLocked,
-            onToggleLock = onToggleLock,
             isCameraDiagnosticAvailable = isCameraDiagnosticAvailable,
             isCameraDiagnosticMode = isCameraDiagnosticMode,
             onToggleCameraDiagnosticMode = onToggleCameraDiagnosticMode,
@@ -278,24 +248,18 @@ fun AimOverlay(
 }
 
 /**
- * A full-width translucent bar pinned to the top edge — the only UI besides the reticle and (while
- * in either boresighting or creep mode) the creep pad. Aiming controls sit on the left as labeled
- * chips (icon-only buttons are hard to read at a glance — a text label under each icon removes the
- * guesswork); the manual brightness slider sits on the right (there is plenty of room in landscape).
- *
- * "정렬"([isBoresightingMode]) and "영점"([isCreepMode]) are separate buttons rather than one
- * toggle — they're different steps of the zeroing procedure (see [dev.sangjun.mobileaim.aim.AimOverlay]'s
- * KDoc) with different reticle displays, and mixing them meant the crosshair the creep pad is
- * supposed to move wasn't even drawn while the pad was visible.
+ * A full-width translucent bar pinned to the top edge. Left: the [ModeSegmentedControl], then the
+ * logging/capture/focus chips (icon-only buttons are hard to read at a glance — a text label under
+ * each icon removes the guesswork). Right: the gun (profile) and zoom pickers — disabled while
+ * shooting, since changing either swaps the zero in use — and the manual brightness slider.
  */
 @Composable
 private fun Header(
+    mode: AimMode,
+    isZeroed: Boolean,
+    onModeChange: (AimMode) -> Unit,
     activeProfileName: String,
     onOpenProfileSheet: () -> Unit,
-    isBoresightingMode: Boolean,
-    onToggleBoresightingMode: () -> Unit,
-    isCreepMode: Boolean,
-    onToggleCreepMode: () -> Unit,
     isLoggingActive: Boolean,
     onToggleLogging: () -> Unit,
     onCaptureClick: () -> Unit,
@@ -303,28 +267,14 @@ private fun Header(
     onToggleFocusMode: () -> Unit,
     brightness: Float,
     onBrightnessChange: (Float) -> Unit,
-    zoomRatio: Float,
-    onZoomChange: (Float) -> Unit,
-    isLocked: Boolean,
-    onToggleLock: () -> Unit,
+    zoomLevel: Int,
+    onZoomChange: (Int) -> Unit,
     isCameraDiagnosticAvailable: Boolean,
     isCameraDiagnosticMode: Boolean,
     onToggleCameraDiagnosticMode: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (isLocked) {
-        // Locked: only the lock chip remains, so recoil or a stray grip touch can't flip a mode,
-        // switch profile, or drag the brightness to 5% mid-string.
-        Box(
-            modifier = modifier
-                .padding(WindowInsets.safeDrawing.asPaddingValues())
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .fillMaxWidth(),
-        ) {
-            LockButton(isLocked = true, onToggleLock = onToggleLock)
-        }
-        return
-    }
+    val isShooting = mode == AimMode.Shooting
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
         shape = RectangleShape,
@@ -342,19 +292,7 @@ private fun Header(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LockButton(isLocked = false, onToggleLock = onToggleLock)
-                LabeledHeaderButton(
-                    icon = Icons.Filled.GpsFixed,
-                    label = "정렬",
-                    active = isBoresightingMode,
-                    onClick = onToggleBoresightingMode,
-                )
-                LabeledHeaderButton(
-                    icon = Icons.Filled.ControlCamera,
-                    label = "영점",
-                    active = isCreepMode,
-                    onClick = onToggleCreepMode,
-                )
+                ModeSegmentedControl(mode = mode, isShootingAvailable = isZeroed, onModeChange = onModeChange)
                 LabeledHeaderButton(
                     icon = if (isLoggingActive) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     label = if (isLoggingActive) "정지" else "로깅",
@@ -387,8 +325,8 @@ private fun Header(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ActiveProfileLabel(name = activeProfileName, onClick = onOpenProfileSheet)
-                ZoomButton(zoomRatio = zoomRatio, onZoomChange = onZoomChange)
+                ActiveProfileLabel(name = activeProfileName, isEnabled = !isShooting, onClick = onOpenProfileSheet)
+                ZoomButton(zoomLevel = zoomLevel, isEnabled = !isShooting, onZoomChange = onZoomChange)
                 BrightnessCapsuleSlider(brightness = brightness, onBrightnessChange = onBrightnessChange)
             }
         }
@@ -396,22 +334,96 @@ private fun Header(
 }
 
 /**
- * Names the active profile inside the same chip styling the other header buttons use — plain
- * unboxed text here used to read as inert labeling rather than the actual entry point into profile
- * management; the box (plus the trailing [Icons.Filled.ArrowDropDown]) now matches those buttons'
- * affordance for "this is tappable". Opens [ProfileSheet] on tap.
+ * Two segments, "영점" | "사격", the selected one filled. Entering "사격" is a tap but only once
+ * the current zoom is zeroed ([isShootingAvailable]; dimmed otherwise). Leaving it needs a long
+ * press on "영점", so a bump from recoil or the grip can't unlock the zero mid-string.
+ */
+@Composable
+private fun ModeSegmentedControl(
+    mode: AimMode,
+    isShootingAvailable: Boolean,
+    onModeChange: (AimMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)),
+    ) {
+        Segment(
+            label = "영점",
+            icon = Icons.Filled.ControlCamera,
+            isSelected = mode == AimMode.Zeroing,
+            isEnabled = true,
+            onTap = {},
+            onLongPress = { if (mode == AimMode.Shooting) onModeChange(AimMode.Zeroing) },
+        )
+        Segment(
+            label = "사격",
+            icon = Icons.Filled.GpsFixed,
+            isSelected = mode == AimMode.Shooting,
+            isEnabled = isShootingAvailable || mode == AimMode.Shooting,
+            onTap = { if (isShootingAvailable) onModeChange(AimMode.Shooting) },
+            onLongPress = {},
+        )
+    }
+}
+
+@Composable
+private fun Segment(
+    label: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    isEnabled: Boolean,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    val contentAlpha = if (isEnabled) 1f else 0.35f
+    Box(
+        modifier = Modifier
+            .size(width = 64.dp, height = 52.dp)
+            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else Color.Transparent)
+            .pointerInput(isEnabled, onTap, onLongPress) {
+                detectTapGestures(
+                    onTap = { if (isEnabled) onTap() },
+                    onLongPress = { if (isEnabled) onLongPress() },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha), modifier = Modifier.size(20.dp))
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+                style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * Names the active gun (profile) inside the same chip styling the other header buttons use — the
+ * box plus the trailing [Icons.Filled.ArrowDropDown] read as "this is tappable". Opens
+ * [ProfileSheet] on tap; dimmed and inert while shooting.
  */
 @Composable
 private fun ActiveProfileLabel(
     name: String,
+    isEnabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
         onClick = onClick,
+        enabled = isEnabled,
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = if (isEnabled) 0.70f else 0.35f),
+        contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isEnabled) 1f else 0.5f),
         modifier = modifier,
     ) {
         Row(
@@ -424,38 +436,34 @@ private fun ActiveProfileLabel(
     }
 }
 
-/** Discrete zoom presets — a slider needs a free hand to drag precisely, which the shooter doesn't have while holding the gun; a one-tap preset doesn't. */
-private val ZoomPresets = (1..8).map { it.toFloat() }
-
-/** "2x" for whole ratios, "2.5x" for in-between ones a pinch can land on. */
-private fun formatZoom(zoomRatio: Float): String =
-    if (zoomRatio % 1f < 0.05f) "${zoomRatio.toInt()}x" else "%.1fx".format(zoomRatio)
-
 /**
- * A single header button (same shape as [LabeledHeaderButton]) showing the current zoom ratio as
- * its label — tapping it opens a [DropdownMenu] to pick a different [ZoomPresets] value, instead of
- * three always-visible chips that took up header width for a value that rarely changes mid-session.
+ * A single header button (same shape as [LabeledHeaderButton]) showing the current zoom level as
+ * its label — tapping it opens a [DropdownMenu] of [ZoomLevels]. A slider needs a free hand to drag
+ * precisely, which the shooter doesn't have while holding the gun; a one-tap pick doesn't. Inert
+ * while shooting.
  */
 @Composable
 private fun ZoomButton(
-    zoomRatio: Float,
-    onZoomChange: (Float) -> Unit,
+    zoomLevel: Int,
+    isEnabled: Boolean,
+    onZoomChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
         LabeledHeaderButton(
             icon = Icons.Filled.ZoomIn,
-            label = formatZoom(zoomRatio),
+            label = "${zoomLevel}x",
             active = isExpanded,
+            isEnabled = isEnabled,
             onClick = { isExpanded = true },
         )
         DropdownMenu(expanded = isExpanded, onDismissRequest = { isExpanded = false }) {
-            for (preset in ZoomPresets) {
+            for (level in ZoomLevels) {
                 DropdownMenuItem(
-                    text = { Text(formatZoom(preset)) },
+                    text = { Text("${level}x") },
                     onClick = {
-                        onZoomChange(preset)
+                        onZoomChange(level)
                         isExpanded = false
                     },
                 )
@@ -478,16 +486,18 @@ private fun LabeledHeaderButton(
     active: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isEnabled: Boolean = true,
 ) {
     Surface(
         onClick = onClick,
+        enabled = isEnabled,
         shape = RoundedCornerShape(8.dp),
         color = if (active) {
             MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
         } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+            MaterialTheme.colorScheme.surface.copy(alpha = if (isEnabled) 0.70f else 0.35f)
         },
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isEnabled) 1f else 0.5f),
         modifier = modifier.size(width = 56.dp, height = 52.dp),
     ) {
         Column(
@@ -501,44 +511,6 @@ private fun LabeledHeaderButton(
                 // Default line height adds top/bottom leading beyond the glyphs themselves, which
                 // throws off the icon+label block's visual centering inside the chip — pin it to
                 // the font size so the block's actual ink matches its layout bounds.
-                style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-/**
- * Same look as [LabeledHeaderButton]. Locking is a plain tap; unlocking needs a long press, so a
- * bump from recoil can't undo the lock.
- */
-@Composable
-private fun LockButton(isLocked: Boolean, onToggleLock: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = if (isLocked) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-        } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
-        },
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier
-            .size(width = 56.dp, height = 52.dp)
-            .pointerInput(isLocked) {
-                detectTapGestures(
-                    onTap = { if (!isLocked) onToggleLock() },
-                    onLongPress = { if (isLocked) onToggleLock() },
-                )
-            },
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
-        ) {
-            Icon(if (isLocked) Icons.Filled.Lock else Icons.Filled.LockOpen, contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(
-                text = if (isLocked) "잠김" else "잠금",
                 style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
                 maxLines = 1,
             )
@@ -601,17 +573,11 @@ private fun BrightnessCapsuleSlider(
 }
 
 /**
- * A vertical D-pad of four arrow buttons, shown in both "정렬"(boresighting) and "영점"(zeroing)
- * mode with different backing actions:
- * - In "영점" mode, dials in click adjustments after a confirmation shot, moving the *effective*
- *   reticle (the aiming crosshair stays visible so there's something to watch move) — a readout
- *   above the pad shows the net click count per axis, omitted for an axis that's still at zero.
- * - In "정렬" mode, nudges the *raw* zero by one click's worth of screen distance per press
- *   instead — a finer-grained alternative to dragging — without touching the click counters at
- *   all, so there's nothing to read out (see [dev.sangjun.mobileaim.aim.AimOverlay]'s KDoc).
- *
- * Either way, each arrow moves the reticle itself in that direction (not a turret-dial convention)
- * — pressing "위" makes it move up, matching what the shooter sees happen on screen.
+ * A vertical D-pad of four arrow buttons, shown in "영점" mode: each press dials in one click
+ * ([MoaPerClick] MOA) on the current zoom's zero, and a readout above the pad shows the net click
+ * count per axis, omitted for an axis that's still at zero. Each arrow moves the reticle itself in
+ * that direction (not a turret-dial convention) — pressing "위" makes it move up, matching what the
+ * shooter sees happen on screen.
  */
 @Composable
 private fun CreepPad(
@@ -748,7 +714,7 @@ private fun DrawScope.drawRingCrosshair(center: Offset) {
 }
 
 /**
- * In boresighting mode ("정렬"), the reticle is always this plain translucent dot instead of the
+ * While a drag is moving the zero, the reticle is this plain translucent dot instead of the
  * ring-and-dot aiming reticle — a single filled blob is easier to overlay precisely on a real laser
  * dot than a thin ring is. See [AimOverlay]'s KDoc.
  */

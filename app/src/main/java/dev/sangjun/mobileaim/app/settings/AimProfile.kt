@@ -1,40 +1,39 @@
 package dev.sangjun.mobileaim.app.settings
 
+/** The zoom levels the header offers (1x–8x) — each one keeps its own [ZoomZero] per profile. */
+val ZoomLevels: IntRange = 1..8
+
 /**
- * A named zero — one physical setup (gun + mount) worth of aiming data. Replaces the old
- * `AimMode` toggle: instead of two hardcoded equipment slots sharing a single reticle position,
- * any number of profiles can be saved/loaded, each with its own zero and click adjustments.
+ * One zoom level's zero. [xFraction]/[yFraction] (0..1 across the displayed preview) are where
+ * the reticle was last dragged to — onto the laser bore-sighter's dot, or straight onto a group
+ * of hits. [elevationClicks]/[windageClicks] are the creep-pad clicks dialed in since that drag;
+ * they move the reticle by an angle (see [dev.sangjun.mobileaim.aim.clicksToFraction]) and are
+ * kept as counts so the shot log can record how far the zero was nudged. A drag resets them to 0
+ * (the drag itself becomes the new starting point).
+ */
+data class ZoomZero(
+    val xFraction: Float = 0.5f,
+    val yFraction: Float = 0.5f,
+    val elevationClicks: Int = 0,
+    val windageClicks: Int = 0,
+)
+
+/**
+ * A named gun — one physical setup (gun + mount) worth of zeros, one per zoom level in [zeros].
+ * A zoom level missing from [zeros] hasn't been zeroed yet: the reticle sits at screen center and
+ * shooting mode stays unavailable for it (see [dev.sangjun.mobileaim.aim.AimUiState.isZeroed]).
  *
- * [reticleXFraction]/[reticleYFraction]: the bore-sighted zero, set by dragging the reticle onto
- * the laser dot — unaffected by [elevationClicks]/[windageClicks]. A screen fraction only means
- * anything at a particular zoom level (zooming crops-and-magnifies the sensor, narrowing the field
- * of view), so it's paired with [zeroZoomRatio], the zoom that was active when it was last set —
- * see that field's KDoc.
- *
- * [elevationClicks]/[windageClicks]: fine adjustment dialed in after a confirmation shot, kept as
- * signed click counts rather than pre-converted into a screen fraction — see
- * [dev.sangjun.mobileaim.aim.clicksToFraction] for why (screen size/FOV can change; converting at
- * click time would bake today's geometry into a stored value that should stay geometry-agnostic).
+ * Each zoom keeps its own zero instead of reprojecting one zero across zooms: on a multi-lens
+ * phone (Galaxy S25 Ultra) CameraX may switch to a telephoto lens as zoom goes up, and that lens's
+ * optical axis differs from the main lens's, so a zero captured at one zoom doesn't carry over.
  */
 data class AimProfile(
     val id: String,
     val name: String,
-    val reticleXFraction: Float = 0.5f,
-    val reticleYFraction: Float = 0.5f,
-    /**
-     * The zoom ratio that was active when [reticleXFraction]/[reticleYFraction] were last set (by
-     * drag or by the boresighting arrow pad — see [dev.sangjun.mobileaim.aim.AimViewModel.onReticleDrag]).
-     * A screen fraction at one zoom doesn't point at the same real-world spot at another zoom
-     * (fractions scale with the zoom ratio around screen center), so displaying/using the raw zero
-     * at a different current zoom requires reprojecting it by `currentZoomRatio / zeroZoomRatio`
-     * around (0.5, 0.5) — see [dev.sangjun.mobileaim.aim.AimViewModel]'s `uiState`. Old saved
-     * profiles predate zoom entirely, so they're read back as `1f` (equivalent to having been set
-     * at 1x, which is exactly what happened).
-     */
-    val zeroZoomRatio: Float = 1f,
-    val elevationClicks: Int = 0,
-    val windageClicks: Int = 0,
-)
+    val zeros: Map<Int, ZoomZero> = emptyMap(),
+) {
+    fun zeroFor(zoomLevel: Int): ZoomZero? = zeros[zoomLevel]
+}
 
 const val FirearmProfileId = "firearm"
 const val ManualGunProfileId = "manual_gun"

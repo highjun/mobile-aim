@@ -1,10 +1,13 @@
 package dev.sangjun.mobileaim.app.settings
 
+import kotlin.math.roundToInt
+
 /**
  * v0 → v1: the old `AimMode` enum (two fixed equipment slots sharing one reticle position)
- * becomes [AimProfile] (an arbitrary list of named zeros). Both default profiles start from the
+ * becomes [AimProfile] (an arbitrary list of named guns). Both default profiles start from the
  * *same* [reticleXFraction]/[reticleYFraction] — the v0 schema stored only one shared zero despite
- * `AimMode`'s KDoc claiming otherwise, so there's no actual per-mode data to split.
+ * `AimMode`'s KDoc claiming otherwise, so there's no actual per-mode data to split. v0 had no zoom,
+ * so that zero lands in the 1x slot (see [legacyZeroToZoomZeros]).
  *
  * [aimModeOrdinal] selects which default profile becomes active, mirroring the v0
  * `AimMode.entries[ordinal]` lookup (falls back to the first/화기 profile for an out-of-range
@@ -16,7 +19,27 @@ package dev.sangjun.mobileaim.app.settings
  * `allowBackup` can restore a v0-format store onto a fresh install.
  */
 fun migrateAimModeToProfiles(aimModeOrdinal: Int, reticleXFraction: Float, reticleYFraction: Float): MarkerSettings {
-    val profiles = DefaultAimProfiles.map { it.copy(reticleXFraction = reticleXFraction, reticleYFraction = reticleYFraction) }
+    val zeros = legacyZeroToZoomZeros(reticleXFraction, reticleYFraction, zeroZoomRatio = 1f, elevationClicks = 0, windageClicks = 0)
+    val profiles = DefaultAimProfiles.map { it.copy(zeros = zeros) }
     val activeProfile = profiles.getOrElse(aimModeOrdinal) { profiles.first() }
     return MarkerSettings(profiles = profiles, activeProfileId = activeProfile.id)
+}
+
+/**
+ * A profile saved before per-zoom zeros held one zero plus the zoom it was captured at — that
+ * zero goes into the zoom slot nearest to [zeroZoomRatio] (pinch zoom could leave it between
+ * whole steps; clamped to [ZoomLevels]). An untouched default (screen center, no clicks) was never
+ * actually zeroed, so it becomes no zero at all rather than a fake one that would unlock shooting.
+ */
+fun legacyZeroToZoomZeros(
+    reticleXFraction: Float,
+    reticleYFraction: Float,
+    zeroZoomRatio: Float,
+    elevationClicks: Int,
+    windageClicks: Int,
+): Map<Int, ZoomZero> {
+    val untouched = reticleXFraction == 0.5f && reticleYFraction == 0.5f && elevationClicks == 0 && windageClicks == 0
+    if (untouched) return emptyMap()
+    val zoomLevel = zeroZoomRatio.roundToInt().coerceIn(ZoomLevels.first, ZoomLevels.last)
+    return mapOf(zoomLevel to ZoomZero(reticleXFraction, reticleYFraction, elevationClicks, windageClicks))
 }

@@ -6,9 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
@@ -23,13 +21,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * `isCreepMode` is internal state hoisted inside [AimOverlay] itself (not a parameter), so this
- * clicks the "영점" header button to reach it, rather than just constructing an [AimUiState].
- * Unlike [AimOverlayBoresightingScreenshotTest]'s translucent dot, the aiming crosshair stays
- * visible here — the whole point of this mode is watching it move via the creep pad, which here
- * also shows a click-count readout (the "정렬" mode's pad nudges the raw zero instead and never
- * shows one). See [AimOverlayScreenshotTest] for why this is its own test class rather than a
- * shared one.
+ * "영점" mode (the default) at a zoomed zero with clicks dialed in: the aiming crosshair stays
+ * visible so the creep pad has something to move, and the pad shows the click-count readout. See
+ * [AimOverlayScreenshotTest] for why this is its own test class rather than a shared one.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -57,6 +51,8 @@ class AimOverlayCreepScreenshotTest {
                             profiles = DefaultAimProfiles,
                             activeProfileId = profile.id,
                             isCreepAvailable = true,
+                            zoomLevel = 5,
+                            isZeroed = true,
                         ),
                         onReticleDrag = { _, _ -> },
                         onToggleLogging = {},
@@ -76,16 +72,11 @@ class AimOverlayCreepScreenshotTest {
                         onCreepDown = {},
                         onCreepLeft = {},
                         onCreepRight = {},
-                        onBoresightUp = {},
-                        onBoresightDown = {},
-                        onBoresightLeft = {},
-                        onBoresightRight = {},
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
         }
-        composeRule.onNodeWithText("영점").performClick()
         composeRule.waitForIdle()
 
         composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot_creep.png")

@@ -6,9 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
@@ -23,17 +21,14 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * `isBoresightingMode` is internal state hoisted inside [AimOverlay] itself (not a parameter), so
- * unlike the plain-aiming screenshot tests this one has to click the "정렬" header button to reach
- * it, rather than just constructing an [AimUiState]. See [AimOverlayScreenshotTest] for why this
- * is its own test class rather than a shared one, and [AimOverlayCreepScreenshotTest] for the
- * separate "영점" mode whose creep pad moves the effective reticle (and shows a click readout)
- * instead of nudging the raw zero.
+ * A zoom level with no zero yet: the reticle sits at screen center labelled "영점 없음", and the
+ * "사격" segment is dimmed (shooting stays unavailable until this zoom is zeroed). See
+ * [AimOverlayScreenshotTest] for why this is its own test class rather than a shared one.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w891dp-h411dp-land-xhdpi")
-class AimOverlayBoresightingScreenshotTest {
+class AimOverlayUnzeroedScreenshotTest {
     @get:Rule
     val composeRule = createComposeRule()
 
@@ -71,19 +66,14 @@ class AimOverlayBoresightingScreenshotTest {
                         onCreepDown = {},
                         onCreepLeft = {},
                         onCreepRight = {},
-                        onBoresightUp = {},
-                        onBoresightDown = {},
-                        onBoresightLeft = {},
-                        onBoresightRight = {},
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
         }
-        composeRule.onNodeWithText("정렬").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot_boresighting.png")
-        println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot_boresighting.png")
+        composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot_unzeroed.png")
+        println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot_unzeroed.png")
     }
 }

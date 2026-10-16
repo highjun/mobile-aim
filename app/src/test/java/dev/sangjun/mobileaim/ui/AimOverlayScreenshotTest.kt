@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
@@ -57,6 +59,7 @@ class AimOverlayScreenshotTest {
                             brightness = 0.8f,
                             profiles = DefaultAimProfiles,
                             activeProfileId = profile.id,
+                            isZeroed = true,
                         ),
                         onReticleDrag = { _, _ -> },
                         onToggleLogging = {},
@@ -76,10 +79,6 @@ class AimOverlayScreenshotTest {
                         onCreepDown = {},
                         onCreepLeft = {},
                         onCreepRight = {},
-                        onBoresightUp = {},
-                        onBoresightDown = {},
-                        onBoresightLeft = {},
-                        onBoresightRight = {},
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -87,6 +86,9 @@ class AimOverlayScreenshotTest {
         }
         composeRule.waitForIdle()
 
+        // A zeroed zoom lets the "사격" segment switch modes — the default capture shows shooting mode.
+        composeRule.onNodeWithText("사격").performClick()
+        composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot.png")
         println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot.png")
     }
