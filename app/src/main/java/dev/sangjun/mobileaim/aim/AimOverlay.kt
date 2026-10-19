@@ -2,6 +2,7 @@ package dev.sangjun.mobileaim.aim
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -15,10 +16,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -26,7 +29,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BrightnessHigh
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ControlCamera
 import androidx.compose.material.icons.filled.DoNotDisturbOn
@@ -61,6 +63,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.sangjun.mobileaim.app.settings.ZoomLevels
 import kotlin.math.abs
@@ -77,27 +80,27 @@ private const val CreepInitialRepeatDelayMillis = 400L
 private const val CreepRepeatIntervalMillis = 100L
 
 /** The two header modes — see [AimOverlay]'s KDoc. */
-private enum class AimMode { Zeroing, Shooting }
+private enum class AimMode { Adjusting, Shooting }
 
 /**
  * v1: no vision, no pose estimation. Each [dev.sangjun.mobileaim.app.settings.AimProfile] is one
  * gun with a separate zero per zoom level ([AimUiState.zoomLevel]). The header's [ModeSegmentedControl]
- * switches between two modes:
+ * switches between two modes with a plain tap:
  *
- * - "영점" (zeroing): dragging moves the current zoom's zero — onto the laser bore-sighter's dot or
- *   straight onto a group of hits — and the [CreepPad] fine-tunes it by clicks after a
- *   confirmation group. While a finger is dragging, the reticle turns into a plain translucent dot
- *   (a single filled blob lines up with a laser dot more precisely than the ring does); otherwise
- *   the aiming reticle stays visible so the pad's clicks have something to visibly move. A drag
- *   starts from the reticle's current position (relative — a finger landing elsewhere doesn't
- *   teleport it) and resets that zoom's clicks (see
+ * - "사격" (shooting, the starting mode): only the reticle — no arrows, no screen gestures, and the
+ *   gun/zoom pickers are disabled, so a grip touch can't move or swap the zero mid-string.
+ *   Brightness, logging, capture and focus still work. Zeroing groups are shot here too, including
+ *   at a zoom with no zero yet (the reticle then sits at screen center).
+ * - "조정" (adjusting): dragging moves the current zoom's zero — onto the laser bore-sighter's dot
+ *   or straight onto a group of hits — and the [CreepPad] fine-tunes it by clicks (one click = one
+ *   square of the 25m zeroing target, see [RadiansPerClick]). While a finger is dragging, the
+ *   reticle turns into a plain translucent dot (a single filled blob lines up with a laser dot more
+ *   precisely than the ring does). A drag starts from the reticle's current position (relative — a
+ *   finger landing elsewhere doesn't teleport it) and resets that zoom's clicks (see
  *   [dev.sangjun.mobileaim.app.settings.ISettingsRepository.setZero]).
- * - "사격" (shooting): the zero is fixed and the gun/zoom pickers are disabled, so recoil or a grip
- *   touch can't swap the zero mid-string; brightness, logging and capture still work. Unavailable
- *   until the current zoom has a zero ([AimUiState.isZeroed]); leaving it back to "영점" needs a
- *   long press for the same reason.
  *
- * At a zoom with no zero yet, the reticle sits at screen center labelled "영점 없음".
+ * In both modes [ZeroInfo] under the header's right corner shows the current zoom's clicks and
+ * stored zero coordinates.
  */
 @Composable
 fun AimOverlay(
@@ -120,20 +123,16 @@ fun AimOverlay(
     onCreepDown: () -> Unit,
     onCreepLeft: () -> Unit,
     onCreepRight: () -> Unit,
-    isCameraDiagnosticAvailable: Boolean = false,
-    isCameraDiagnosticMode: Boolean = false,
-    onToggleCameraDiagnosticMode: () -> Unit = {},
-    cameraDiagnosticText: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    var mode by remember { mutableStateOf(AimMode.Zeroing) }
+    var mode by remember { mutableStateOf(AimMode.Shooting) }
     var isDragging by remember { mutableStateOf(false) }
     val currentReticle = rememberUpdatedState(uiState.effectiveReticleXFraction to uiState.effectiveReticleYFraction)
-    val isZeroing = mode == AimMode.Zeroing
+    val isAdjusting = mode == AimMode.Adjusting
 
     Box(
         modifier = modifier.then(
-            if (isZeroing) {
+            if (isAdjusting) {
                 Modifier.pointerInput(Unit) {
                     // Relative, not "jump to finger": a finger sliding off a header chip or arrow
                     // used to teleport the zero to wherever it was. Accumulate locally since the
@@ -165,27 +164,8 @@ fun AimOverlay(
             if (isDragging) drawZeroingDot(center) else drawRingCrosshair(center)
         }
 
-        if (!uiState.isZeroed) {
-            Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-                shape = RoundedCornerShape(6.dp),
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(top = 120.dp),
-            ) {
-                Text(
-                    text = "${uiState.zoomLevel}x 영점 없음",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                )
-            }
-        }
-
-        if (isZeroing) {
+        if (isAdjusting) {
             CreepPad(
-                elevationClicks = uiState.elevationClicks,
-                windageClicks = uiState.windageClicks,
                 isEnabled = uiState.isCreepAvailable,
                 onCreepUp = onCreepUp,
                 onCreepDown = onCreepDown,
@@ -197,9 +177,12 @@ fun AimOverlay(
             )
         }
 
+        Column(
+            modifier = Modifier.align(Alignment.TopCenter),
+            horizontalAlignment = Alignment.End,
+        ) {
         Header(
             mode = mode,
-            isZeroed = uiState.isZeroed,
             onModeChange = { mode = it },
             activeProfileName = uiState.activeProfileName,
             onOpenProfileSheet = onOpenProfileSheet,
@@ -212,25 +195,17 @@ fun AimOverlay(
             onBrightnessChange = onBrightnessChange,
             zoomLevel = uiState.zoomLevel,
             onZoomChange = onZoomChange,
-            isCameraDiagnosticAvailable = isCameraDiagnosticAvailable,
-            isCameraDiagnosticMode = isCameraDiagnosticMode,
-            onToggleCameraDiagnosticMode = onToggleCameraDiagnosticMode,
-            modifier = Modifier.align(Alignment.TopCenter),
         )
-
-        // What the camera reports back per frame in diagnostic mode — see CameraDiagnostics.kt.
-        if (cameraDiagnosticText != null) {
-            Text(
-                text = cameraDiagnosticText,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(WindowInsets.safeDrawing.asPaddingValues())
-                    .padding(12.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                    .padding(8.dp),
-            )
+        ZeroInfo(
+            isZeroed = uiState.isZeroed,
+            xFraction = uiState.reticleXFraction,
+            yFraction = uiState.reticleYFraction,
+            elevationClicks = uiState.elevationClicks,
+            windageClicks = uiState.windageClicks,
+            modifier = Modifier
+                .padding(WindowInsets.safeDrawing.only(WindowInsetsSides.End).asPaddingValues())
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        )
         }
     }
 
@@ -256,7 +231,6 @@ fun AimOverlay(
 @Composable
 private fun Header(
     mode: AimMode,
-    isZeroed: Boolean,
     onModeChange: (AimMode) -> Unit,
     activeProfileName: String,
     onOpenProfileSheet: () -> Unit,
@@ -269,9 +243,6 @@ private fun Header(
     onBrightnessChange: (Float) -> Unit,
     zoomLevel: Int,
     onZoomChange: (Int) -> Unit,
-    isCameraDiagnosticAvailable: Boolean,
-    isCameraDiagnosticMode: Boolean,
-    onToggleCameraDiagnosticMode: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isShooting = mode == AimMode.Shooting
@@ -292,7 +263,7 @@ private fun Header(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ModeSegmentedControl(mode = mode, isShootingAvailable = isZeroed, onModeChange = onModeChange)
+                ModeSegmentedControl(mode = mode, onModeChange = onModeChange)
                 LabeledHeaderButton(
                     icon = if (isLoggingActive) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     label = if (isLoggingActive) "정지" else "로깅",
@@ -311,14 +282,6 @@ private fun Header(
                     active = isFocusMode,
                     onClick = onToggleFocusMode,
                 )
-                if (isCameraDiagnosticAvailable) {
-                    LabeledHeaderButton(
-                        icon = Icons.Filled.BugReport,
-                        label = "진단",
-                        active = isCameraDiagnosticMode,
-                        onClick = onToggleCameraDiagnosticMode,
-                    )
-                }
             }
 
             Row(
@@ -333,15 +296,10 @@ private fun Header(
     }
 }
 
-/**
- * Two segments, "영점" | "사격", the selected one filled. Entering "사격" is a tap but only once
- * the current zoom is zeroed ([isShootingAvailable]; dimmed otherwise). Leaving it needs a long
- * press on "영점", so a bump from recoil or the grip can't unlock the zero mid-string.
- */
+/** Two segments, "조정" | "사격", the selected one filled — a plain tap on either switches modes. */
 @Composable
 private fun ModeSegmentedControl(
     mode: AimMode,
-    isShootingAvailable: Boolean,
     onModeChange: (AimMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -351,20 +309,16 @@ private fun ModeSegmentedControl(
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)),
     ) {
         Segment(
-            label = "영점",
+            label = "조정",
             icon = Icons.Filled.ControlCamera,
-            isSelected = mode == AimMode.Zeroing,
-            isEnabled = true,
-            onTap = {},
-            onLongPress = { if (mode == AimMode.Shooting) onModeChange(AimMode.Zeroing) },
+            isSelected = mode == AimMode.Adjusting,
+            onClick = { onModeChange(AimMode.Adjusting) },
         )
         Segment(
             label = "사격",
             icon = Icons.Filled.GpsFixed,
             isSelected = mode == AimMode.Shooting,
-            isEnabled = isShootingAvailable || mode == AimMode.Shooting,
-            onTap = { if (isShootingAvailable) onModeChange(AimMode.Shooting) },
-            onLongPress = {},
+            onClick = { onModeChange(AimMode.Shooting) },
         )
     }
 }
@@ -374,33 +328,60 @@ private fun Segment(
     label: String,
     icon: ImageVector,
     isSelected: Boolean,
-    isEnabled: Boolean,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit,
+    onClick: () -> Unit,
 ) {
-    val contentAlpha = if (isEnabled) 1f else 0.35f
     Box(
         modifier = Modifier
             .size(width = 64.dp, height = 52.dp)
             .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else Color.Transparent)
-            .pointerInput(isEnabled, onTap, onLongPress) {
-                detectTapGestures(
-                    onTap = { if (isEnabled) onTap() },
-                    onLongPress = { if (isEnabled) onLongPress() },
-                )
-            },
+            .clickable(role = Role.Tab, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha), modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
             Text(
                 text = label,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.labelSmall.copy(lineHeight = MaterialTheme.typography.labelSmall.fontSize),
                 maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * Two small faint lines under the header's right corner: the current zoom's clicks (zero axes
+ * left out) and its stored zero coordinates as-is — "—" when that zoom has no zero yet. Kept
+ * subtle so it informs without competing with the target.
+ */
+@Composable
+private fun ZeroInfo(
+    isZeroed: Boolean,
+    xFraction: Float,
+    yFraction: Float,
+    elevationClicks: Int,
+    windageClicks: Int,
+    modifier: Modifier = Modifier,
+) {
+    val clicks = listOfNotNull(
+        formatClickReadout(elevationClicks, upLabel = "↑", downLabel = "↓"),
+        formatClickReadout(windageClicks, upLabel = "→", downLabel = "←"),
+    ).joinToString(" ").ifEmpty { "클릭 0" }
+    val coordinates = if (isZeroed) "(%.3f, %.3f)".format(xFraction, yFraction) else "—"
+    Column(
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.End,
+    ) {
+        for (line in listOf(clicks, coordinates)) {
+            Text(
+                text = line,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.8f),
             )
         }
     }
@@ -573,16 +554,14 @@ private fun BrightnessCapsuleSlider(
 }
 
 /**
- * A vertical D-pad of four arrow buttons, shown in "영점" mode: each press dials in one click
- * ([MoaPerClick] MOA) on the current zoom's zero, and a readout above the pad shows the net click
- * count per axis, omitted for an axis that's still at zero. Each arrow moves the reticle itself in
+ * A vertical D-pad of four arrow buttons, shown in "조정" mode: each press dials in one click
+ * ([RadiansPerClick], one zeroing-target square at 25m) on the current zoom's zero — the net count
+ * shows in [ZeroInfo]. Each arrow moves the reticle itself in
  * that direction (not a turret-dial convention) — pressing "위" makes it move up, matching what the
  * shooter sees happen on screen.
  */
 @Composable
 private fun CreepPad(
-    elevationClicks: Int,
-    windageClicks: Int,
     isEnabled: Boolean,
     onCreepUp: () -> Unit,
     onCreepDown: () -> Unit,
@@ -595,23 +574,6 @@ private fun CreepPad(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        val readout = listOfNotNull(
-            formatClickReadout(elevationClicks, upLabel = "↑", downLabel = "↓"),
-            formatClickReadout(windageClicks, upLabel = "→", downLabel = "←"),
-        ).joinToString(" ")
-        if (readout.isNotEmpty()) {
-            Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-                shape = RoundedCornerShape(6.dp),
-            ) {
-                Text(
-                    text = readout,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                )
-            }
-        }
         CreepArrowButton(Icons.Filled.KeyboardArrowUp, "위로 조정", isEnabled, onCreepUp)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             CreepArrowButton(Icons.Filled.KeyboardArrowLeft, "왼쪽으로 조정", isEnabled, onCreepLeft)
@@ -663,11 +625,11 @@ private fun CreepArrowButton(
     }
 }
 
-/** `null` when [clicks] is zero — the caller omits that axis from the readout entirely rather than showing "0클릭". */
+/** `null` when [clicks] is zero — the caller omits that axis from [ZeroInfo] entirely. */
 private fun formatClickReadout(clicks: Int, upLabel: String, downLabel: String): String? {
     if (clicks == 0) return null
     val direction = if (clicks > 0) upLabel else downLabel
-    return "$direction${abs(clicks)}클릭"
+    return "$direction${abs(clicks)}"
 }
 
 /**

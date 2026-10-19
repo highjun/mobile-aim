@@ -52,13 +52,14 @@ class SharedPrefsSettingsRepositoryMigrationTest {
     }
 
     @Test
-    fun `a fresh install with no stored keys gets the default profiles`() {
+    fun `a fresh install with no stored keys gets the default profiles with 에어소프트 active`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
 
         val settings = SharedPrefsSettingsRepository(context).settings.value
 
-        assertEquals(DefaultAimProfiles.map { it.id }, settings.profiles.map { it.id })
-        assertEquals(FirearmProfileId, settings.activeProfileId)
+        assertEquals(listOf(ManualGunProfileId, FirearmProfileId), settings.profiles.map { it.id })
+        assertEquals(listOf("에어소프트", "K2C1"), settings.profiles.map { it.name })
+        assertEquals(ManualGunProfileId, settings.activeProfileId)
     }
 
     /**

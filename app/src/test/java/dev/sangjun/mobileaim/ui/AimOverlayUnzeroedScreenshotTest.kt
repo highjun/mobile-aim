@@ -21,8 +21,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * A zoom level with no zero yet: the reticle sits at screen center labelled "영점 없음", and the
- * "사격" segment is dimmed (shooting stays unavailable until this zoom is zeroed). See
+ * A zoom level with no zero yet, in "사격" mode (the default): the reticle sits at screen center
+ * with no notice over the target, and the zero info shows "—" for the coordinates. See
  * [AimOverlayScreenshotTest] for why this is its own test class rather than a shared one.
  */
 @RunWith(RobolectricTestRunner::class)

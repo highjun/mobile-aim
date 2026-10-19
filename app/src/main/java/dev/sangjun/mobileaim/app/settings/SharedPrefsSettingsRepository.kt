@@ -20,7 +20,10 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
      */
     private fun loadSettings(): MarkerSettings {
         val schemaVersion = prefs.getInt(KEY_SCHEMA_VERSION, 0)
-        if (schemaVersion < 1) {
+        // A fresh install has no v0 keys at all — it skips the migration and gets the defaults
+        // (first profile active) instead of the v0 ordinal-0 fallback.
+        val hasLegacyKeys = listOf(KEY_AIM_MODE, KEY_RETICLE_X_FRACTION, KEY_RETICLE_Y_FRACTION).any(prefs::contains)
+        if (schemaVersion < 1 && hasLegacyKeys) {
             val migrated = migrateAimModeToProfiles(
                 aimModeOrdinal = prefs.getInt(KEY_AIM_MODE, 0),
                 reticleXFraction = prefs.getFloat(KEY_RETICLE_X_FRACTION, 0.5f),

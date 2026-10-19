@@ -53,7 +53,7 @@ class AimViewModel(
         val reticleYFraction = zero?.yFraction ?: 0.5f
         val elevationClicks = zero?.elevationClicks ?: 0
         val windageClicks = zero?.windageClicks ?: 0
-        // Clicks are angle-native (MOA), so only the *current* zoom's effective focal length
+        // Clicks are angle-native (see RadiansPerClick), so only the *current* zoom's effective focal length
         // matters for converting them to a screen fraction — see CameraFov.zoomRatio's KDoc.
         val elevationOffset = cameraFov?.let { clicksToFraction(elevationClicks, it.focalLengthYPx * it.zoomRatio, it.referenceHeightPx) } ?: 0f
         val windageOffset = cameraFov?.let { clicksToFraction(windageClicks, it.focalLengthYPx * it.zoomRatio, it.referenceWidthPx) } ?: 0f
@@ -84,7 +84,7 @@ class AimViewModel(
         settingsRepository.setZero(zoomLevelFlow.value, xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
     }
 
-    /** Moves the reticle up by one click ([MoaPerClick] MOA) — see [AimUiState.effectiveReticleYFraction]. */
+    /** Moves the reticle up by one click ([RadiansPerClick]) — see [AimUiState.effectiveReticleYFraction]. */
     fun onCreepUp() = settingsRepository.updateClicks(zoomLevelFlow.value, elevationDelta = 1, windageDelta = 0)
 
     /** Moves the reticle down by one click. */

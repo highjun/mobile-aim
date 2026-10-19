@@ -71,12 +71,6 @@ android {
     }
 
     buildTypes {
-        // Installs next to the CI-published release instead of replacing it — the release's
-        // versionCode (1000+) blocks a local debug build (versionCode 1) from updating it, and
-        // uninstalling it would wipe the saved zero profiles.
-        debug {
-            applicationIdSuffix = ".debug"
-        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -91,7 +85,6 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = true
     }
 
     composeOptions {

@@ -36,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import dev.sangjun.mobileaim.BuildConfig
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimViewModel
 import dev.sangjun.mobileaim.app.camera.CameraPreview
@@ -77,10 +76,7 @@ fun MainScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
-    val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder>? -> videoCapture = capture } }
-    // Debug-only camera diagnostics (see CameraDiagnostics.kt) — not persisted, off on every launch.
-    var isCameraDiagnosticMode by remember { mutableStateOf(false) }
-    var cameraDiagnosticText by remember { mutableStateOf<String?>(null) }
+    val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder> -> videoCapture = capture } }
     var camera by remember { mutableStateOf<Camera?>(null) }
     val onCameraReady = remember { { boundCamera: Camera -> camera = boundCamera } }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
@@ -129,8 +125,6 @@ fun MainScreen(
             onCameraReady = onCameraReady,
             onCameraFovReady = aimViewModel::onCameraFovAvailable,
             onCameraError = onCameraError,
-            isDiagnosticMode = isCameraDiagnosticMode,
-            onDiagnosticSnapshot = { snapshot -> cameraDiagnosticText = snapshot.toDisplayText() },
         )
 
         AimOverlay(
@@ -160,10 +154,6 @@ fun MainScreen(
             onCreepDown = aimViewModel::onCreepDown,
             onCreepLeft = aimViewModel::onCreepLeft,
             onCreepRight = aimViewModel::onCreepRight,
-            isCameraDiagnosticAvailable = BuildConfig.DEBUG,
-            isCameraDiagnosticMode = isCameraDiagnosticMode,
-            onToggleCameraDiagnosticMode = { isCameraDiagnosticMode = !isCameraDiagnosticMode },
-            cameraDiagnosticText = if (isCameraDiagnosticMode) cameraDiagnosticText else null,
             modifier = Modifier.fillMaxSize(),
         )
     }

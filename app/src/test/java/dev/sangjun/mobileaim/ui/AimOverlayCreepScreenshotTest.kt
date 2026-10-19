@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
@@ -21,8 +23,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * "영점" mode (the default) at a zoomed zero with clicks dialed in: the aiming crosshair stays
- * visible so the creep pad has something to move, and the pad shows the click-count readout. See
+ * "조정" mode (tapped from the default "사격") at a zoomed zero with clicks dialed in: the creep
+ * pad appears, and the zero info under the header shows the clicks and stored coordinates. See
  * [AimOverlayScreenshotTest] for why this is its own test class rather than a shared one.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -79,6 +81,8 @@ class AimOverlayCreepScreenshotTest {
         }
         composeRule.waitForIdle()
 
+        composeRule.onNodeWithText("조정").performClick()
+        composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot_creep.png")
         println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot_creep.png")
     }

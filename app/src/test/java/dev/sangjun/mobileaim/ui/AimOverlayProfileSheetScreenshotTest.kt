@@ -73,7 +73,7 @@ class AimOverlayProfileSheetScreenshotTest {
         composeRule.onNodeWithTag(ProfileSheetTestTag).captureRoboImage("/tmp/mobileaim_ui_screenshot_profile_list.png")
         println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot_profile_list.png")
 
-        composeRule.onNodeWithContentDescription("화기 편집").performClick()
+        composeRule.onNodeWithContentDescription("K2C1 편집").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(ProfileSheetTestTag).captureRoboImage("/tmp/mobileaim_ui_screenshot_profile_editor.png")
         println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot_profile_editor.png")

@@ -1,13 +1,13 @@
 package dev.sangjun.mobileaim.aim
 
-import kotlin.math.PI
 import kotlin.math.tan
 
-/** Every reticle click nudges by this many minutes of angle — see [clicksToFraction]. */
-const val MoaPerClick = 2f
-
-private const val ArcminutesPerDegree = 60.0
-private const val RadiansPerMoa = (PI / 180.0 / ArcminutesPerDegree).toFloat()
+/**
+ * Every reticle click nudges by this angle — 7mm at 25m (0.28 mrad, about 0.96 MOA), one square of
+ * the army's 25m zeroing target and about one K2 rear-sight click. Click counts can then be read
+ * straight off the target: a group 3 squares low takes 3 clicks up. See [clicksToFraction].
+ */
+const val RadiansPerClick = 0.007f / 25f
 
 /**
  * Converts a signed click count into a screen-fraction offset, along whichever axis the caller's
@@ -22,6 +22,6 @@ private const val RadiansPerMoa = (PI / 180.0 / ArcminutesPerDegree).toFloat()
  */
 fun clicksToFraction(clicks: Int, focalLengthPx: Float, referenceLengthPx: Float): Float {
     if (clicks == 0 || referenceLengthPx <= 0f) return 0f
-    val angleRad = clicks * MoaPerClick * RadiansPerMoa
+    val angleRad = clicks * RadiansPerClick
     return focalLengthPx * tan(angleRad) / referenceLengthPx
 }

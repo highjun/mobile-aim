@@ -29,7 +29,7 @@ data class AimUiState(
     val brightness: Float = 0.8f,
     /** The header's selected zoom level (1..8, see [dev.sangjun.mobileaim.app.settings.ZoomLevels]) — picks which zero is in use. Not the same as [dev.sangjun.mobileaim.app.camera.CameraFov.zoomRatio], which is what CameraX actually settled on. */
     val zoomLevel: Int = 1,
-    /** Whether the active profile has a zero at [zoomLevel] — shooting mode is unavailable until it does. */
+    /** Whether the active profile has a zero at [zoomLevel] — only shown in the zero info (stored coordinates or "—"). */
     val isZeroed: Boolean = false,
     val profiles: List<AimProfile> = DefaultAimProfiles,
     val activeProfileId: String = DefaultAimProfiles.first().id,

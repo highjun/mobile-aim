@@ -20,8 +20,8 @@ data class ZoomZero(
 
 /**
  * A named gun — one physical setup (gun + mount) worth of zeros, one per zoom level in [zeros].
- * A zoom level missing from [zeros] hasn't been zeroed yet: the reticle sits at screen center and
- * shooting mode stays unavailable for it (see [dev.sangjun.mobileaim.aim.AimUiState.isZeroed]).
+ * A zoom level missing from [zeros] hasn't been zeroed yet: the reticle sits at screen center (see
+ * [dev.sangjun.mobileaim.aim.AimUiState.isZeroed]).
  *
  * Each zoom keeps its own zero instead of reprojecting one zero across zooms: on a multi-lens
  * phone (Galaxy S25 Ultra) CameraX may switch to a telephoto lens as zoom goes up, and that lens's
@@ -38,14 +38,18 @@ data class AimProfile(
 const val FirearmProfileId = "firearm"
 const val ManualGunProfileId = "manual_gun"
 
-/** Seeded on first run and by the v0→v1 settings migration (see [migrateAimModeToProfiles]). */
+/**
+ * Seeded on first run and by the v0→v1 settings migration (see [migrateAimModeToProfiles]). The
+ * first one is selected on a fresh install. The ids predate the names (화기 → K2C1, 수동건 →
+ * 에어소프트) and stay as they are so saved data keeps matching.
+ */
 val DefaultAimProfiles = listOf(
     AimProfile(
-        id = FirearmProfileId,
-        name = "화기",
+        id = ManualGunProfileId,
+        name = "에어소프트",
     ),
     AimProfile(
-        id = ManualGunProfileId,
-        name = "수동건",
+        id = FirearmProfileId,
+        name = "K2C1",
     ),
 )

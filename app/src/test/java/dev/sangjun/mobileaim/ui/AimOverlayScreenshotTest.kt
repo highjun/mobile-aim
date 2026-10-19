@@ -7,8 +7,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
@@ -30,7 +28,7 @@ import org.robolectric.annotation.GraphicsMode
  * [captureRoboImage] rather than plain compose-ui-test's `captureToImage()`, which times out
  * waiting for a redraw under Robolectric's paused main Looper.
  *
- * Split from [AimOverlayManualGunScreenshotTest]/[AimOverlayZeroingScreenshotTest] into separate
+ * Split from [AimOverlayManualGunScreenshotTest]/[AimOverlayCreepScreenshotTest] into separate
  * classes rather than more `@Test`s here — Robolectric gives each test *class* a fresh
  * `Application`, but within one class Koin's `GlobalContext` (a JVM static) survives across
  * `@Test` methods, so a second `MobileAimApplication.onCreate()` call in the same class throws
@@ -86,9 +84,6 @@ class AimOverlayScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        // A zeroed zoom lets the "사격" segment switch modes — the default capture shows shooting mode.
-        composeRule.onNodeWithText("사격").performClick()
-        composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot.png")
         println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot.png")
     }
