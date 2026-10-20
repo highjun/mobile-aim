@@ -2,6 +2,8 @@ package dev.sangjun.mobileaim.aim
 
 import dev.sangjun.mobileaim.app.settings.AimProfile
 import dev.sangjun.mobileaim.app.settings.DefaultAimProfiles
+import dev.sangjun.mobileaim.app.settings.DefaultEnabledZoomLevels
+import dev.sangjun.mobileaim.app.settings.ReticleSize
 
 /**
  * Reticle state as fractions (0..1) of the camera preview, for the active profile at [zoomLevel].
@@ -27,10 +29,17 @@ data class AimUiState(
     val isLoggingActive: Boolean = false,
     /** Manual screen brightness (0..1) the app forces on its window, replacing system auto-brightness. */
     val brightness: Float = 0.8f,
-    /** The header's selected zoom level (1..8, see [dev.sangjun.mobileaim.app.settings.ZoomLevels]) — picks which zero is in use. Not the same as [dev.sangjun.mobileaim.app.camera.CameraFov.zoomRatio], which is what CameraX actually settled on. */
+    /** The header's selected zoom level (1..25, see [dev.sangjun.mobileaim.app.settings.ZoomLevels]) — picks which zero is in use. Not the same as [dev.sangjun.mobileaim.app.camera.CameraFov.zoomRatio], which is what CameraX actually settled on. */
     val zoomLevel: Int = 1,
     /** Whether the active profile has a zero at [zoomLevel] — only shown in the zero info (stored coordinates or "—"). */
     val isZeroed: Boolean = false,
+    /** Whether the zero shown at [zoomLevel] is an unsaved adjusting-mode edit (see [ZeroDrafts]). */
+    val isZeroUnsaved: Boolean = false,
+    /** Whether any profile/zoom has an unsaved zero — leaving the adjusting mode asks to save them. */
+    val hasUnsavedZeros: Boolean = false,
+    /** Zoom levels the header's zoom picker lists (see [dev.sangjun.mobileaim.app.settings.MarkerSettings.enabledZoomLevels]). */
+    val enabledZoomLevels: List<Int> = DefaultEnabledZoomLevels,
+    val reticleSize: ReticleSize = ReticleSize.Medium,
     val profiles: List<AimProfile> = DefaultAimProfiles,
     val activeProfileId: String = DefaultAimProfiles.first().id,
     /** Whether a [dev.sangjun.mobileaim.app.camera.CameraFov] is available yet — gates the creep pad's arrow buttons (see [AimOverlay]) so a press doesn't silently do nothing. */

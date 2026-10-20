@@ -53,9 +53,10 @@ class SettingsMigrationTest {
     }
 
     @Test
-    fun `a legacy zero captured between pinch steps rounds to the nearest zoom level, clamped to 1x-8x`() {
+    fun `a legacy zero captured between pinch steps rounds to the nearest zoom level, clamped to 1x-25x`() {
         assertEquals(setOf(3), legacyZeroToZoomZeros(0.4f, 0.4f, zeroZoomRatio = 2.6f, elevationClicks = 0, windageClicks = 0).keys)
-        assertEquals(setOf(8), legacyZeroToZoomZeros(0.4f, 0.4f, zeroZoomRatio = 9.5f, elevationClicks = 0, windageClicks = 0).keys)
+        assertEquals(setOf(10), legacyZeroToZoomZeros(0.4f, 0.4f, zeroZoomRatio = 9.5f, elevationClicks = 0, windageClicks = 0).keys)
+        assertEquals(setOf(25), legacyZeroToZoomZeros(0.4f, 0.4f, zeroZoomRatio = 40f, elevationClicks = 0, windageClicks = 0).keys)
     }
 
     @Test

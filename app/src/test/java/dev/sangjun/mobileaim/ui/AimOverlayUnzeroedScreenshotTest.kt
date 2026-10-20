@@ -11,6 +11,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
 import dev.sangjun.mobileaim.app.settings.DefaultAimProfiles
+import dev.sangjun.mobileaim.app.settings.ReticleSize
 import dev.sangjun.mobileaim.app.settings.FirearmProfileId
 import dev.sangjun.mobileaim.app.ui.theme.MobileAimTheme
 import org.junit.Rule
@@ -47,6 +48,7 @@ class AimOverlayUnzeroedScreenshotTest {
                             brightness = 0.8f,
                             profiles = DefaultAimProfiles,
                             activeProfileId = FirearmProfileId,
+                            reticleSize = ReticleSize.Large,
                         ),
                         onReticleDrag = { _, _ -> },
                         onToggleLogging = {},

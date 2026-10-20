@@ -78,4 +78,67 @@ class SharedPrefsSettingsRepositoryTest {
 
         assertEquals(mapOf(5 to ZoomZero(0.6f, 0.3f, 2, -1)), reloaded.zeros)
     }
+
+    @Test
+    fun `selected zoom level survives a reload so its zero shows after a restart`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        SharedPrefsSettingsRepository(context).apply {
+            updateZoomLevel(8)
+            setZero(zoomLevel = 8, xFraction = 0.55f, yFraction = 0.45f)
+        }
+
+        val reloaded = SharedPrefsSettingsRepository(context).settings.value
+
+        assertEquals(8, reloaded.zoomLevel)
+        assertEquals(ZoomZero(0.55f, 0.45f), reloaded.activeProfile.zeroFor(reloaded.zoomLevel))
+    }
+
+    @Test
+    fun `zoom level is clamped to the offered range`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SharedPrefsSettingsRepository(context)
+
+        repository.updateZoomLevel(30)
+
+        assertEquals(ZoomLevels.last, repository.settings.value.zoomLevel)
+    }
+
+    @Test
+    fun `saveZero writes to the given profile, not the active one`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SharedPrefsSettingsRepository(context)
+        val other = repository.settings.value.profiles.first { it.id != repository.settings.value.activeProfileId }
+
+        repository.saveZero(other.id, 8, ZoomZero(0.4f, 0.6f, -40, -40))
+
+        val reloaded = SharedPrefsSettingsRepository(context).settings.value
+        assertEquals(ZoomZero(0.4f, 0.6f, -40, -40), reloaded.profiles.first { it.id == other.id }.zeroFor(8))
+        assertNull(reloaded.activeProfile.zeroFor(8))
+    }
+
+    @Test
+    fun `enabled zoom levels survive a reload, cleaned and sorted`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        SharedPrefsSettingsRepository(context).updateEnabledZoomLevels(listOf(10, 1, 5, 5, 30))
+
+        assertEquals(listOf(1, 5, 10), SharedPrefsSettingsRepository(context).settings.value.enabledZoomLevels)
+    }
+
+    @Test
+    fun `an empty zoom level list is ignored`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SharedPrefsSettingsRepository(context)
+
+        repository.updateEnabledZoomLevels(emptyList())
+
+        assertEquals(DefaultEnabledZoomLevels, repository.settings.value.enabledZoomLevels)
+    }
+
+    @Test
+    fun `reticle size survives a reload`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        SharedPrefsSettingsRepository(context).updateReticleSize(ReticleSize.Large)
+
+        assertEquals(ReticleSize.Large, SharedPrefsSettingsRepository(context).settings.value.reticleSize)
+    }
 }

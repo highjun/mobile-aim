@@ -15,6 +15,8 @@ import android.view.PixelCopy
 import android.view.Window
 import android.widget.Toast
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraState
+import androidx.camera.core.ZoomState
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Recorder
@@ -25,20 +27,25 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Observer
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimViewModel
 import dev.sangjun.mobileaim.app.camera.CameraPreview
+import dev.sangjun.mobileaim.app.settings.ZoomLevels
 import dev.sangjun.mobileaim.utils.fileTimestampNow
 import java.io.File
 import java.io.FileOutputStream
@@ -74,6 +81,7 @@ fun MainScreen(
     onCameraError: (Throwable) -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder> -> videoCapture = capture } }
@@ -85,10 +93,31 @@ fun MainScreen(
 
     // Applies the header's chosen zoom level to the actual bound camera — clamped to what the
     // hardware reports, in case a device's max zoom ratio is below 8x.
+    val currentZoomLevel by rememberUpdatedState(uiState.zoomLevel)
     LaunchedEffect(uiState.zoomLevel, camera) {
-        val boundCamera = camera ?: return@LaunchedEffect
-        val zoomState = boundCamera.cameraInfo.zoomState.value ?: return@LaunchedEffect
-        boundCamera.cameraControl.setZoomRatio(uiState.zoomLevel.toFloat().coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio))
+        camera?.applyZoomLevel(uiState.zoomLevel)
+    }
+    // Re-applied every time the camera (re)opens: CameraX resets zoom to 1x whenever the camera
+    // closes (screen off, app switch — ZoomControl.setActive(false)), while the zoom level and the
+    // Camera object stay the same, so the effect above wouldn't run again and the header would keep
+    // showing e.g. "8x" over a 1x picture.
+    DisposableEffect(camera, lifecycleOwner) {
+        val boundCamera = camera ?: return@DisposableEffect onDispose {}
+        val cameraState = boundCamera.cameraInfo.cameraState
+        val observer = Observer<CameraState> { state ->
+            if (state.type == CameraState.Type.OPEN) boundCamera.applyZoomLevel(currentZoomLevel)
+        }
+        cameraState.observe(lifecycleOwner, observer)
+        onDispose { cameraState.removeObserver(observer) }
+    }
+
+    // The camera's real zoom ceiling (10x on Galaxy S25 Ultra) — the zoom picker can't go past it.
+    var maxZoomLevel by remember { mutableStateOf(ZoomLevels.last) }
+    DisposableEffect(camera, lifecycleOwner) {
+        val zoomState = camera?.cameraInfo?.zoomState ?: return@DisposableEffect onDispose {}
+        val observer = Observer<ZoomState> { maxZoomLevel = it.maxZoomRatio.toInt().coerceIn(ZoomLevels.first, ZoomLevels.last) }
+        zoomState.observe(lifecycleOwner, observer)
+        onDispose { zoomState.removeObserver(observer) }
     }
 
     // Force the manual brightness onto the host Activity's window; setting an explicit 0..1 value
@@ -154,9 +183,19 @@ fun MainScreen(
             onCreepDown = aimViewModel::onCreepDown,
             onCreepLeft = aimViewModel::onCreepLeft,
             onCreepRight = aimViewModel::onCreepRight,
+            onSaveZeroDrafts = aimViewModel::saveZeroDrafts,
+            onDiscardZeroDrafts = aimViewModel::discardZeroDrafts,
+            onEnabledZoomLevelsChange = aimViewModel::onEnabledZoomLevelsChange,
+            onCycleReticleSize = aimViewModel::onCycleReticleSize,
+            maxZoomLevel = maxZoomLevel,
             modifier = Modifier.fillMaxSize(),
         )
     }
+}
+
+private fun Camera.applyZoomLevel(zoomLevel: Int) {
+    val zoomState = cameraInfo.zoomState.value ?: return
+    cameraControl.setZoomRatio(zoomLevel.toFloat().coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio))
 }
 
 /** Walks the [Context] wrapper chain to the hosting [Activity] (needed to reach its window). */

@@ -36,7 +36,12 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
                 .putString(KEY_ACTIVE_PROFILE_ID, migrated.activeProfileId)
                 .putInt(KEY_SCHEMA_VERSION, 1)
                 .apply()
-            return migrated.copy(brightness = prefs.getFloat(KEY_BRIGHTNESS, MarkerSettings.DEFAULT_BRIGHTNESS))
+            return migrated.copy(
+                brightness = prefs.getFloat(KEY_BRIGHTNESS, MarkerSettings.DEFAULT_BRIGHTNESS),
+                zoomLevel = loadZoomLevel(),
+                enabledZoomLevels = loadEnabledZoomLevels(),
+                reticleSize = loadReticleSize(),
+            )
         }
 
         val profiles = prefs.getString(KEY_PROFILES, null)?.let(::parseProfiles)?.takeIf { it.isNotEmpty() } ?: DefaultAimProfiles
@@ -45,8 +50,23 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
             profiles = profiles,
             activeProfileId = activeProfileId,
             brightness = prefs.getFloat(KEY_BRIGHTNESS, MarkerSettings.DEFAULT_BRIGHTNESS),
+            zoomLevel = loadZoomLevel(),
+            enabledZoomLevels = loadEnabledZoomLevels(),
+            reticleSize = loadReticleSize(),
         )
     }
+
+    private fun loadEnabledZoomLevels(): List<Int> =
+        prefs.getString(KEY_ENABLED_ZOOM_LEVELS, null)
+            ?.split(",")?.mapNotNull { it.trim().toIntOrNull() }
+            ?.filter { it in ZoomLevels }?.distinct()?.sorted()
+            ?.takeIf { it.isNotEmpty() }
+            ?: DefaultEnabledZoomLevels
+
+    private fun loadReticleSize(): ReticleSize =
+        ReticleSize.entries.getOrElse(prefs.getInt(KEY_RETICLE_SIZE, ReticleSize.Medium.ordinal)) { ReticleSize.Medium }
+
+    private fun loadZoomLevel(): Int = prefs.getInt(KEY_ZOOM_LEVEL, ZoomLevels.first).coerceIn(ZoomLevels.first, ZoomLevels.last)
 
     override fun setZero(zoomLevel: Int, xFraction: Float, yFraction: Float) {
         updateActiveProfile { it.copy(zeros = it.zeros + (zoomLevel to ZoomZero(xFraction, yFraction))) }
@@ -98,6 +118,28 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
         mutableSettings.value = mutableSettings.value.copy(brightness = brightness)
     }
 
+    override fun updateZoomLevel(zoomLevel: Int) {
+        val clamped = zoomLevel.coerceIn(ZoomLevels.first, ZoomLevels.last)
+        prefs.edit().putInt(KEY_ZOOM_LEVEL, clamped).apply()
+        mutableSettings.value = mutableSettings.value.copy(zoomLevel = clamped)
+    }
+
+    override fun saveZero(profileId: String, zoomLevel: Int, zero: ZoomZero) {
+        updateProfile(profileId) { it.copy(zeros = it.zeros + (zoomLevel to zero)) }
+    }
+
+    override fun updateEnabledZoomLevels(zoomLevels: List<Int>) {
+        val cleaned = zoomLevels.filter { it in ZoomLevels }.distinct().sorted()
+        if (cleaned.isEmpty()) return
+        prefs.edit().putString(KEY_ENABLED_ZOOM_LEVELS, cleaned.joinToString(",")).apply()
+        mutableSettings.value = mutableSettings.value.copy(enabledZoomLevels = cleaned)
+    }
+
+    override fun updateReticleSize(size: ReticleSize) {
+        prefs.edit().putInt(KEY_RETICLE_SIZE, size.ordinal).apply()
+        mutableSettings.value = mutableSettings.value.copy(reticleSize = size)
+    }
+
     private fun updateActiveProfile(transform: (AimProfile) -> AimProfile) {
         updateProfile(mutableSettings.value.activeProfileId, transform)
     }
@@ -119,6 +161,9 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
         const val KEY_PROFILES = "profiles"
         const val KEY_ACTIVE_PROFILE_ID = "active_profile_id"
         const val KEY_BRIGHTNESS = "brightness"
+        const val KEY_ZOOM_LEVEL = "zoom_level"
+        const val KEY_ENABLED_ZOOM_LEVELS = "enabled_zoom_levels"
+        const val KEY_RETICLE_SIZE = "reticle_size"
 
         // v0 keys — read-only, kept around for the migration; never written after schema v1.
         const val KEY_RETICLE_X_FRACTION = "reticle_x_fraction"

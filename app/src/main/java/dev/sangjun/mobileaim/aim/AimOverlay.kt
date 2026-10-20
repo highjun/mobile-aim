@@ -1,5 +1,12 @@
 package dev.sangjun.mobileaim.aim
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.filled.FilterCenterFocus
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
+import dev.sangjun.mobileaim.app.settings.ReticleSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -124,8 +131,15 @@ fun AimOverlay(
     onCreepLeft: () -> Unit,
     onCreepRight: () -> Unit,
     modifier: Modifier = Modifier,
+    onSaveZeroDrafts: () -> Unit = {},
+    onDiscardZeroDrafts: () -> Unit = {},
+    onEnabledZoomLevelsChange: (List<Int>) -> Unit = {},
+    onCycleReticleSize: () -> Unit = {},
+    maxZoomLevel: Int = ZoomLevels.last,
 ) {
     var mode by remember { mutableStateOf(AimMode.Shooting) }
+    var isSavePromptOpen by remember { mutableStateOf(false) }
+    var isZoomPickerOpen by remember { mutableStateOf(false) }
     var isDragging by remember { mutableStateOf(false) }
     val currentReticle = rememberUpdatedState(uiState.effectiveReticleXFraction to uiState.effectiveReticleYFraction)
     val isAdjusting = mode == AimMode.Adjusting
@@ -161,7 +175,7 @@ fun AimOverlay(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(uiState.effectiveReticleXFraction * size.width, uiState.effectiveReticleYFraction * size.height)
-            if (isDragging) drawZeroingDot(center) else drawRingCrosshair(center)
+            if (isDragging) drawZeroingDot(center) else drawRingCrosshair(center, uiState.reticleSize)
         }
 
         if (isAdjusting) {
@@ -183,7 +197,10 @@ fun AimOverlay(
         ) {
         Header(
             mode = mode,
-            onModeChange = { mode = it },
+            onModeChange = { next ->
+                // Leaving the adjusting mode with unsaved zero edits asks first — see ZeroDrafts.
+                if (mode == AimMode.Adjusting && next == AimMode.Shooting && uiState.hasUnsavedZeros) isSavePromptOpen = true else mode = next
+            },
             activeProfileName = uiState.activeProfileName,
             onOpenProfileSheet = onOpenProfileSheet,
             isLoggingActive = uiState.isLoggingActive,
@@ -195,6 +212,10 @@ fun AimOverlay(
             onBrightnessChange = onBrightnessChange,
             zoomLevel = uiState.zoomLevel,
             onZoomChange = onZoomChange,
+            enabledZoomLevels = uiState.enabledZoomLevels.filter { it <= maxZoomLevel },
+            onOpenZoomPicker = { isZoomPickerOpen = true },
+            reticleSize = uiState.reticleSize,
+            onCycleReticleSize = onCycleReticleSize,
         )
         ZeroInfo(
             isZeroed = uiState.isZeroed,
@@ -202,11 +223,29 @@ fun AimOverlay(
             yFraction = uiState.reticleYFraction,
             elevationClicks = uiState.elevationClicks,
             windageClicks = uiState.windageClicks,
+            isUnsaved = uiState.isZeroUnsaved,
             modifier = Modifier
                 .padding(WindowInsets.safeDrawing.only(WindowInsetsSides.End).asPaddingValues())
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         )
         }
+    }
+
+    if (isSavePromptOpen) {
+        SaveZeroDialog(
+            onSave = { onSaveZeroDrafts(); isSavePromptOpen = false; mode = AimMode.Shooting },
+            onDiscard = { onDiscardZeroDrafts(); isSavePromptOpen = false; mode = AimMode.Shooting },
+            onCancel = { isSavePromptOpen = false },
+        )
+    }
+
+    if (isZoomPickerOpen) {
+        ZoomPickerDialog(
+            enabledZoomLevels = uiState.enabledZoomLevels,
+            maxZoomLevel = maxZoomLevel,
+            onConfirm = { onEnabledZoomLevelsChange(it); isZoomPickerOpen = false },
+            onDismiss = { isZoomPickerOpen = false },
+        )
     }
 
     if (isProfileSheetOpen) {
@@ -243,6 +282,10 @@ private fun Header(
     onBrightnessChange: (Float) -> Unit,
     zoomLevel: Int,
     onZoomChange: (Int) -> Unit,
+    enabledZoomLevels: List<Int>,
+    onOpenZoomPicker: () -> Unit,
+    reticleSize: ReticleSize,
+    onCycleReticleSize: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isShooting = mode == AimMode.Shooting
@@ -282,6 +325,17 @@ private fun Header(
                     active = isFocusMode,
                     onClick = onToggleFocusMode,
                 )
+                // Works in both modes — the right size depends on the shooting position (eye-to-screen distance).
+                LabeledHeaderButton(
+                    icon = Icons.Filled.FilterCenterFocus,
+                    label = when (reticleSize) {
+                        ReticleSize.Small -> "작게"
+                        ReticleSize.Medium -> "보통"
+                        ReticleSize.Large -> "크게"
+                    },
+                    active = false,
+                    onClick = onCycleReticleSize,
+                )
             }
 
             Row(
@@ -289,7 +343,13 @@ private fun Header(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ActiveProfileLabel(name = activeProfileName, isEnabled = !isShooting, onClick = onOpenProfileSheet)
-                ZoomButton(zoomLevel = zoomLevel, isEnabled = !isShooting, onZoomChange = onZoomChange)
+                ZoomButton(
+                    zoomLevel = zoomLevel,
+                    zoomLevels = enabledZoomLevels,
+                    isEnabled = !isShooting,
+                    onZoomChange = onZoomChange,
+                    onOpenZoomPicker = onOpenZoomPicker,
+                )
                 BrightnessCapsuleSlider(brightness = brightness, onBrightnessChange = onBrightnessChange)
             }
         }
@@ -364,6 +424,7 @@ private fun ZeroInfo(
     yFraction: Float,
     elevationClicks: Int,
     windageClicks: Int,
+    isUnsaved: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val clicks = listOfNotNull(
@@ -383,6 +444,9 @@ private fun ZeroInfo(
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.8f),
             )
+        }
+        if (isUnsaved) {
+            Text(text = "저장 안 됨", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFC107))
         }
     }
 }
@@ -426,8 +490,10 @@ private fun ActiveProfileLabel(
 @Composable
 private fun ZoomButton(
     zoomLevel: Int,
+    zoomLevels: List<Int>,
     isEnabled: Boolean,
     onZoomChange: (Int) -> Unit,
+    onOpenZoomPicker: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isExpanded by remember { mutableStateOf(false) }
@@ -440,7 +506,7 @@ private fun ZoomButton(
             onClick = { isExpanded = true },
         )
         DropdownMenu(expanded = isExpanded, onDismissRequest = { isExpanded = false }) {
-            for (level in ZoomLevels) {
+            for (level in zoomLevels) {
                 DropdownMenuItem(
                     text = { Text("${level}x") },
                     onClick = {
@@ -449,6 +515,13 @@ private fun ZoomButton(
                     },
                 )
             }
+            DropdownMenuItem(
+                text = { Text("배율 고르기") },
+                onClick = {
+                    isExpanded = false
+                    onOpenZoomPicker()
+                },
+            )
         }
     }
 }
@@ -633,46 +706,37 @@ private fun formatClickReadout(clicks: Int, upLabel: String, downLabel: String):
 }
 
 /**
- * The aiming reticle: a ring with a crosshair stroke growing outward from each of its four
- * cardinal points, plus a translucent center dot (see [AimOverlay]'s KDoc) — the dot's alpha is
- * what keeps the actual point of aim visible underneath it, standing in for a real holosight's
- * translucent glass. Each stroke starts exactly at the ring's edge (no center gap the way the old
- * crosshair-only reticle had) and extends outward, so the ring reads as the strokes' common origin
- * rather than four independent lines.
+ * The aiming reticle. The aim point is where the thin center lines cross — they are 1dp wide and
+ * stay the same at every [size], so the reticle never adds aiming error or hides the target (1dp is
+ * under one 7mm square at 25m from about 8x up). [size] only scales the ring and the thicker outer
+ * ticks, which make the reticle easy to find at different eye-to-screen distances. The thick parts
+ * get a thin dark outline so they show against a bright sky as well as dark ground.
  */
-private fun DrawScope.drawRingCrosshair(center: Offset) {
-    val ringRadius = 18.dp.toPx()
-    val ringStrokeWidth = 2.dp.toPx()
-    val tickLength = 14.dp.toPx()
-    val dotRadius = 6.dp.toPx()
-    val dotAlpha = 0.5f
+private fun DrawScope.drawRingCrosshair(center: Offset, size: ReticleSize) {
+    val (ringRadiusDp, tickLengthDp, strokeDp) = when (size) {
+        ReticleSize.Small -> Triple(12f, 8f, 1.5f)
+        ReticleSize.Medium -> Triple(18f, 14f, 2f)
+        ReticleSize.Large -> Triple(26f, 20f, 3f)
+    }
+    val ringRadius = ringRadiusDp.dp.toPx()
+    val tickLength = tickLengthDp.dp.toPx()
+    val stroke = strokeDp.dp.toPx()
+    val outline = stroke + 1.5.dp.toPx()
+    val outlineColor = Color.Black.copy(alpha = 0.6f)
+    val directions = listOf(Offset(0f, -1f), Offset(0f, 1f), Offset(-1f, 0f), Offset(1f, 0f))
 
-    drawCircle(color = ReticleDotColor, radius = ringRadius, center = center, style = Stroke(width = ringStrokeWidth))
-    drawLine(
-        color = ReticleDotColor,
-        start = Offset(center.x, center.y - ringRadius),
-        end = Offset(center.x, center.y - ringRadius - tickLength),
-        strokeWidth = ringStrokeWidth,
-    )
-    drawLine(
-        color = ReticleDotColor,
-        start = Offset(center.x, center.y + ringRadius),
-        end = Offset(center.x, center.y + ringRadius + tickLength),
-        strokeWidth = ringStrokeWidth,
-    )
-    drawLine(
-        color = ReticleDotColor,
-        start = Offset(center.x - ringRadius, center.y),
-        end = Offset(center.x - ringRadius - tickLength, center.y),
-        strokeWidth = ringStrokeWidth,
-    )
-    drawLine(
-        color = ReticleDotColor,
-        start = Offset(center.x + ringRadius, center.y),
-        end = Offset(center.x + ringRadius + tickLength, center.y),
-        strokeWidth = ringStrokeWidth,
-    )
-    drawCircle(color = ReticleDotColor.copy(alpha = dotAlpha), radius = dotRadius, center = center)
+    // outline first, then the red strokes on top
+    for ((color, width) in listOf(outlineColor to outline, ReticleDotColor to stroke)) {
+        drawCircle(color = color, radius = ringRadius, center = center, style = Stroke(width = width))
+        for (d in directions) {
+            drawLine(color = color, start = center + d * ringRadius, end = center + d * (ringRadius + tickLength), strokeWidth = width)
+        }
+    }
+    // thin center lines: the aim point is their crossing
+    val thin = 1.dp.toPx()
+    for (d in directions) {
+        drawLine(color = ReticleDotColor, start = center, end = center + d * ringRadius, strokeWidth = thin)
+    }
 }
 
 /**
@@ -682,4 +746,63 @@ private fun DrawScope.drawRingCrosshair(center: Offset) {
  */
 private fun DrawScope.drawZeroingDot(center: Offset) {
     drawCircle(color = ReticleDotColor.copy(alpha = 0.5f), radius = 20.dp.toPx(), center = center)
+}
+
+/**
+ * Asked when leaving the adjusting mode with unsaved zero edits (see [ZeroDrafts]): save them, drop
+ * them (the saved zeros come back), or stay in the adjusting mode.
+ */
+@Composable
+private fun SaveZeroDialog(onSave: () -> Unit, onDiscard: () -> Unit, onCancel: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("영점을 저장할까요?") },
+        text = { Text("조정한 영점은 저장해야 남습니다. 저장하지 않으면 이전 영점으로 돌아갑니다.") },
+        confirmButton = { TextButton(onClick = onSave) { Text("저장") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onCancel) { Text("취소") }
+                TextButton(onClick = onDiscard) { Text("저장 안 함") }
+            }
+        },
+    )
+}
+
+/**
+ * Picks which of [ZoomLevels] the header's zoom picker lists. Levels above [maxZoomLevel] (what the
+ * camera can reach) can't be turned on. At least one level stays on.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ZoomPickerDialog(
+    enabledZoomLevels: List<Int>,
+    maxZoomLevel: Int,
+    onConfirm: (List<Int>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selected by remember { mutableStateOf(enabledZoomLevels.filter { it <= maxZoomLevel }.toSet()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("쓸 배율 고르기") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("이 폰의 최대 배율은 ${maxZoomLevel}배입니다.", style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (level in ZoomLevels) {
+                        val isOn = level in selected
+                        FilterChip(
+                            selected = isOn,
+                            enabled = level <= maxZoomLevel,
+                            onClick = { selected = if (isOn) selected - level else selected + level },
+                            label = { Text("${level}x") },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = selected.isNotEmpty(), onClick = { onConfirm(selected.sorted()) }) { Text("저장") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+    )
 }

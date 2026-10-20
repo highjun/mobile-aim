@@ -33,4 +33,16 @@ interface ISettingsRepository {
 
     /** Persists the manual screen brightness (0..1) the app forces on its window. */
     fun updateBrightness(brightness: Float)
+
+    /** Persists the selected zoom level (clamped to [ZoomLevels]) — see [MarkerSettings.zoomLevel]. */
+    fun updateZoomLevel(zoomLevel: Int)
+
+    /** Replaces [profileId]'s zero at [zoomLevel] as a whole — used when the adjusting mode's unsaved zeros are saved. */
+    fun saveZero(profileId: String, zoomLevel: Int, zero: ZoomZero)
+
+    /** Persists which zoom levels the header lists (filtered to [ZoomLevels], sorted; ignored if empty). */
+    fun updateEnabledZoomLevels(zoomLevels: List<Int>)
+
+    /** Persists the reticle size step. */
+    fun updateReticleSize(size: ReticleSize)
 }

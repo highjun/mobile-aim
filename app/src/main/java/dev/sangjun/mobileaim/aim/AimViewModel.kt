@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.sangjun.mobileaim.app.camera.CameraFov
 import dev.sangjun.mobileaim.app.settings.AimProfile
 import dev.sangjun.mobileaim.app.settings.ISettingsRepository
-import dev.sangjun.mobileaim.app.settings.ZoomLevels
+import dev.sangjun.mobileaim.app.settings.ReticleSize
 import dev.sangjun.mobileaim.logging.CaptureRow
 import dev.sangjun.mobileaim.logging.ICaptureLogWriter
 import dev.sangjun.mobileaim.logging.ISensorMotionLogger
@@ -39,16 +39,19 @@ class AimViewModel(
     /** Set from [onCameraFovAvailable] whenever the preview's stream/layout changes — null until the first publish, and click offsets fall back to 0 (raw zero only) rather than guessing. */
     private val cameraFovFlow = MutableStateFlow<CameraFov?>(null)
 
-    /** The header's selected zoom level (see [onZoomChange]) — [dev.sangjun.mobileaim.app.ui.MainScreen] applies it to the bound camera; [cameraFovFlow]'s [CameraFov.zoomRatio] reports back what CameraX actually settled on. */
-    private val zoomLevelFlow = MutableStateFlow(ZoomLevels.first)
+    /** Unsaved adjusting-mode zero edits — see [ZeroDrafts], [saveZeroDrafts], [discardZeroDrafts]. */
+    private val zeroDraftsFlow = MutableStateFlow(ZeroDrafts())
 
     val uiState: StateFlow<AimUiState> = combine(
         settingsRepository.settings,
         isLoggingActiveFlow,
         cameraFovFlow,
-        zoomLevelFlow,
-    ) { settings, isLoggingActive, cameraFov, zoomLevel ->
-        val zero = settings.activeProfile.zeroFor(zoomLevel)
+        zeroDraftsFlow,
+    ) { settings, isLoggingActive, cameraFov, drafts ->
+        // The header's selected zoom level (see onZoomChange) — persisted in settings; MainScreen
+        // applies it to the bound camera, and cameraFov.zoomRatio reports what CameraX settled on.
+        val zoomLevel = settings.zoomLevel
+        val zero = drafts.zeroFor(settings.activeProfileId, zoomLevel, settings.activeProfile.zeroFor(zoomLevel))
         val reticleXFraction = zero?.xFraction ?: 0.5f
         val reticleYFraction = zero?.yFraction ?: 0.5f
         val elevationClicks = zero?.elevationClicks ?: 0
@@ -73,28 +76,50 @@ class AimViewModel(
             isCreepAvailable = cameraFov != null,
             zoomLevel = zoomLevel,
             isZeroed = zero != null,
+            isZeroUnsaved = drafts.isUnsaved(settings.activeProfileId, zoomLevel),
+            hasUnsavedZeros = !drafts.isEmpty,
+            enabledZoomLevels = settings.enabledZoomLevels,
+            reticleSize = settings.reticleSize,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
 
     /**
-     * [xFraction]/[yFraction] are 0..1 across the displayed camera preview — saved as the current
-     * zoom's zero as-is, resetting that zoom's clicks (see [ISettingsRepository.setZero]).
+     * [xFraction]/[yFraction] are 0..1 across the displayed camera preview — becomes the current
+     * zoom's unsaved zero, resetting its clicks (see [ZeroDrafts.drag]).
      */
     fun onReticleDrag(xFraction: Float, yFraction: Float) {
-        settingsRepository.setZero(zoomLevelFlow.value, xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
+        val settings = settingsRepository.settings.value
+        zeroDraftsFlow.value = zeroDraftsFlow.value.drag(settings.activeProfileId, settings.zoomLevel, xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
     }
 
-    /** Moves the reticle up by one click ([RadiansPerClick]) — see [AimUiState.effectiveReticleYFraction]. */
-    fun onCreepUp() = settingsRepository.updateClicks(zoomLevelFlow.value, elevationDelta = 1, windageDelta = 0)
+    /** Moves the reticle up by one click ([RadiansPerClick]) — unsaved until [saveZeroDrafts]; see [AimUiState.effectiveReticleYFraction]. */
+    fun onCreepUp() = click(elevationDelta = 1, windageDelta = 0)
 
     /** Moves the reticle down by one click. */
-    fun onCreepDown() = settingsRepository.updateClicks(zoomLevelFlow.value, elevationDelta = -1, windageDelta = 0)
+    fun onCreepDown() = click(elevationDelta = -1, windageDelta = 0)
 
     /** Moves the reticle left by one click. */
-    fun onCreepLeft() = settingsRepository.updateClicks(zoomLevelFlow.value, elevationDelta = 0, windageDelta = -1)
+    fun onCreepLeft() = click(elevationDelta = 0, windageDelta = -1)
 
     /** Moves the reticle right by one click. */
-    fun onCreepRight() = settingsRepository.updateClicks(zoomLevelFlow.value, elevationDelta = 0, windageDelta = 1)
+    fun onCreepRight() = click(elevationDelta = 0, windageDelta = 1)
+
+    private fun click(elevationDelta: Int, windageDelta: Int) {
+        val settings = settingsRepository.settings.value
+        val saved = settings.activeProfile.zeroFor(settings.zoomLevel)
+        zeroDraftsFlow.value = zeroDraftsFlow.value.click(settings.activeProfileId, settings.zoomLevel, saved, elevationDelta, windageDelta)
+    }
+
+    /** Writes every unsaved zero (any profile, any zoom) to settings and clears the drafts. */
+    fun saveZeroDrafts() {
+        for ((key, zero) in zeroDraftsFlow.value.zeros) settingsRepository.saveZero(key.first, key.second, zero)
+        zeroDraftsFlow.value = ZeroDrafts()
+    }
+
+    /** Drops every unsaved zero — the saved zeros show again. */
+    fun discardZeroDrafts() {
+        zeroDraftsFlow.value = ZeroDrafts()
+    }
 
     /** Switches which saved profile is active. */
     fun onSelectProfile(profileId: String) = settingsRepository.setActiveProfile(profileId)
@@ -127,9 +152,16 @@ class AimViewModel(
         cameraFovFlow.value = fov
     }
 
-    /** Selects a zoom level (1..8) from the header — [dev.sangjun.mobileaim.app.ui.MainScreen] reacts to [uiState]'s [AimUiState.zoomLevel] to actually apply it to the bound camera. */
-    fun onZoomChange(zoomLevel: Int) {
-        zoomLevelFlow.value = zoomLevel.coerceIn(ZoomLevels.first, ZoomLevels.last)
+    /** Selects a zoom level (1..25) from the header and persists it — [dev.sangjun.mobileaim.app.ui.MainScreen] reacts to [uiState]'s [AimUiState.zoomLevel] to actually apply it to the bound camera. */
+    fun onZoomChange(zoomLevel: Int) = settingsRepository.updateZoomLevel(zoomLevel)
+
+    /** Which zoom levels the header's zoom picker lists. */
+    fun onEnabledZoomLevelsChange(zoomLevels: List<Int>) = settingsRepository.updateEnabledZoomLevels(zoomLevels)
+
+    /** Steps the reticle size small → medium → large → small. */
+    fun onCycleReticleSize() {
+        val sizes = ReticleSize.entries
+        settingsRepository.updateReticleSize(sizes[(settingsRepository.settings.value.reticleSize.ordinal + 1) % sizes.size])
     }
 
     /** [brightness] is 0..1; persisted so the manual screen brightness survives app restarts. */

@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -55,6 +57,8 @@ class AimOverlayCreepScreenshotTest {
                             isCreepAvailable = true,
                             zoomLevel = 5,
                             isZeroed = true,
+                            isZeroUnsaved = true,
+                            hasUnsavedZeros = true,
                         ),
                         onReticleDrag = { _, _ -> },
                         onToggleLogging = {},
@@ -84,6 +88,13 @@ class AimOverlayCreepScreenshotTest {
         composeRule.onNodeWithText("조정").performClick()
         composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot_creep.png")
+
+        // Leaving the adjusting mode with an unsaved zero asks first.
+        composeRule.onNodeWithText("사격").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("영점을 저장할까요?").assertExists()
+        // The dialog is its own window, so there are two roots now — capture the dialog's.
+        composeRule.onAllNodes(isRoot()).onLast().captureRoboImage("/tmp/mobileaim_ui_screenshot_save_prompt.png")
         println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot_creep.png")
     }
 }

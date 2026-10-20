@@ -1,7 +1,20 @@
 package dev.sangjun.mobileaim.app.settings
 
-/** The zoom levels the header offers (1x–8x) — each one keeps its own [ZoomZero] per profile. */
-val ZoomLevels: IntRange = 1..8
+/**
+ * Every zoom level the app knows (1x–25x) — each one keeps its own [ZoomZero] per profile. The
+ * header only lists the ones the user turned on ([MarkerSettings.enabledZoomLevels]) and the
+ * camera can reach (Galaxy S25 Ultra's API maximum is 10x).
+ */
+val ZoomLevels: IntRange = 1..25
+
+/** Turned on for a fresh install — the 1x–8x the header offered before the range grew. */
+val DefaultEnabledZoomLevels: List<Int> = (1..8).toList()
+
+/**
+ * Reticle size steps — only the ring, the outer ticks and their thickness change; the aim point
+ * (where the thin center lines cross) stays put, so a bigger reticle doesn't add aiming error.
+ */
+enum class ReticleSize { Small, Medium, Large }
 
 /**
  * One zoom level's zero. [xFraction]/[yFraction] (0..1 across the displayed preview) are where
