@@ -16,19 +16,19 @@ class MoaClicksTest {
         val clicks = 6
         val focalLengthPx = 1000f
         val referenceLengthPx = 1080f
-        val angleRad = clicks * 0.007 / 25.0
+        val angleRad = clicks * 0.008 / 25.0
         val expected = (focalLengthPx * tan(angleRad) / referenceLengthPx).toFloat()
 
         assertEquals(expected, clicksToFraction(clicks, focalLengthPx, referenceLengthPx), 1e-6f)
     }
 
     @Test
-    fun `one click is 7mm at 25m`() {
-        // A pinhole with focal length f puts a 7mm offset at 25m at f * 7 / 25000 px.
+    fun `one click is 8mm at 25m`() {
+        // A pinhole with focal length f puts an 8mm offset at 25m at f * 8 / 25000 px.
         val focalLengthPx = 2807f
         val offsetPx = clicksToFraction(clicks = 1, focalLengthPx = focalLengthPx, referenceLengthPx = 1f)
 
-        assertEquals(focalLengthPx * 7f / 25_000f, offsetPx, 1e-3f)
+        assertEquals(focalLengthPx * 8f / 25_000f, offsetPx, 1e-3f)
     }
 
     @Test

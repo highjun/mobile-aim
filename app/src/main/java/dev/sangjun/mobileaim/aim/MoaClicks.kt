@@ -3,11 +3,11 @@ package dev.sangjun.mobileaim.aim
 import kotlin.math.tan
 
 /**
- * Every reticle click nudges by this angle — 7mm at 25m (0.28 mrad, about 0.96 MOA), one square of
- * the army's 25m zeroing target and about one K2 rear-sight click. Click counts can then be read
- * straight off the target: a group 3 squares low takes 3 clicks up. See [clicksToFraction].
+ * Every reticle click nudges by this angle — 8mm at 25m (0.32 mrad, about 1.1 MOA), one square of
+ * the army's 25m zeroing target (measured on the paper). Click counts can then be read straight off
+ * the target: a group 3 squares low takes 3 clicks down. See [clicksToFraction].
  */
-const val RadiansPerClick = 0.007f / 25f
+const val RadiansPerClick = 0.008f / 25f
 
 /**
  * Converts a signed click count into a screen-fraction offset, along whichever axis the caller's

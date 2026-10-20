@@ -708,7 +708,7 @@ private fun formatClickReadout(clicks: Int, upLabel: String, downLabel: String):
 /**
  * The aiming reticle. The aim point is where the thin center lines cross — they are 1dp wide and
  * stay the same at every [size], so the reticle never adds aiming error or hides the target (1dp is
- * under one 7mm square at 25m from about 8x up). [size] only scales the ring and the thicker outer
+ * under one 8mm square at 25m from about 8x up). [size] only scales the ring and the thicker outer
  * ticks, which make the reticle easy to find at different eye-to-screen distances. The thick parts
  * get a thin dark outline so they show against a bright sky as well as dark ground.
  */
