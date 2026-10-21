@@ -40,6 +40,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
+        manifestPlaceholders["appLabel"] = "MobileAim"
         applicationId = "dev.sangjun.mobileaim"
         minSdk = 26
         targetSdk = 36
@@ -71,6 +72,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Only on request (./gradlew installDebug -PdebugIdSuffix): installs next to the Play
+            // build instead of clashing with its signature, so the Play build's saved zeros stay.
+            // A plain debug build keeps the same app ID as release.
+            (project.findProperty("debugIdSuffix") as String?)?.let {
+                applicationIdSuffix = it.ifBlank { ".debug" }
+                manifestPlaceholders["appLabel"] = "MobileAim (debug)"
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
