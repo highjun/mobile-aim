@@ -30,7 +30,7 @@ gradle.taskGraph.whenReady {
     if (needsSigning && !keystorePropertiesFile.exists()) {
         throw GradleException(
             "keystore.properties가 없어 릴리스 빌드에 서명할 수 없습니다 — " +
-                "app/app/keystore.properties를 로컬에 생성하세요 (git에 커밋하지 말 것).",
+                "app/keystore.properties를 로컬에 생성하세요 (git에 커밋하지 말 것).",
         )
     }
 }
