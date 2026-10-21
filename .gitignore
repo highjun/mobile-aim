@@ -1,0 +1,20 @@
+# Gradle / Android
+.gradle/
+build/
+**/build/
+local.properties
+
+# Release signing: never commit the upload key or its passwords
+keystore.properties
+*.jks
+*.keystore
+
+# Play Publisher service account: CI writes this from a secret, never commit it
+play-service-account.json
+
+# Android Studio
+.idea/
+*.iml
+
+# OS
+.DS_Store
