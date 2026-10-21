@@ -44,10 +44,11 @@ android {
         applicationId = "dev.sangjun.mobileaim"
         minSdk = 26
         targetSdk = 36
-        // CI passes -PversionCode=1000+<github.run_number> so every auto-published build gets a
-        // fresh, strictly-increasing code without committing anything back to the repo — offset
-        // by 1000 to stay clear of versionCode 1, which the first release used (uploaded manually,
-        // before this pipeline existed). Local builds (no property set) fall back to 1.
+        // CI passes -PversionCode=2000+<github.run_number> so every auto-published build gets a
+        // fresh, strictly-increasing code without committing anything back to the repo. The offset
+        // is 2000 because the workflow moved to this repository, whose run_number restarts at 1,
+        // and Play already holds versionCode 1018 from the old pipeline (1000+run_number).
+        // Local builds (no property set) fall back to 1.
         versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
