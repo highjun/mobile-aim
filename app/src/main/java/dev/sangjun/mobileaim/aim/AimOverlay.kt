@@ -1017,10 +1017,10 @@ private fun ShakeIndicator(
 }
 
 /** The shake track's half-height, in milliradians (at 25m, 1 mrad is 25mm). */
-private const val ShakeFullScaleMrad = 3f
+private const val ShakeFullScaleMrad = 6f
 
 /** Shake (RMS over the last second) under this is shown green. */
-private const val ShakeGreenMrad = 1f
+private const val ShakeGreenMrad = 2f
 
 /** Shake under this (and at least [ShakeGreenMrad]) is shown amber; more is red. */
-private const val ShakeAmberMrad = 2f
+private const val ShakeAmberMrad = 4f
