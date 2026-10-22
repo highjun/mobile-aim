@@ -77,4 +77,17 @@ class ShakeTrackerTest {
     fun `an angle reads as millimetres at 25m`() {
         assertEquals(8f, (0.008f / 25f).toMmAt25m(), 1e-4f)
     }
+
+    @Test
+    fun `swinging to a new aim resets at once instead of easing back`() {
+        // Hold, then swing the aim up by 30 mrad (well past the 10 mrad re-aim threshold) and hold again.
+        val tracker = ShakeTracker()
+        for (i in 0..60) tracker.update(i * 16_666_667L, 0f)
+        var reading = tracker.update(61 * 16_666_667L, 0.03f)
+        assertEquals(0f, reading.deviationRad, 1e-7f)
+        for (i in 62..70) reading = tracker.update(i * 16_666_667L, 0.03f)
+
+        assertEquals(0f, reading.deviationRad, 1e-7f)
+        assertEquals(0f, reading.rmsRad, 1e-7f)
+    }
 }

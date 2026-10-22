@@ -1,6 +1,7 @@
 package dev.sangjun.mobileaim.aim
 
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.exp
 import kotlin.math.sqrt
@@ -36,12 +37,16 @@ fun cameraElevationRad(rotationMatrix: FloatArray): Float {
  * sensor noise). Then an exponential moving average with
  * time constant [baselineTauNanos] stands in for "where the shooter is holding", and the shake is
  * the elevation minus that average — so a slow, deliberate change of aim fades out while the quick
- * up-and-down tremor stays. Pure (no Android), so it is unit-tested directly.
+ * up-and-down tremor stays. A jump of more than [reaimRad] from that average (the shooter swinging
+ * to a new aim, or recoil) isn't shake: the filter, the average and the RMS window all restart from
+ * the new elevation, so the indicator reads the new hold at once instead of easing back over
+ * seconds. Pure (no Android), so it is unit-tested directly.
  */
 class ShakeTracker(
     private val baselineTauNanos: Long = 1_000_000_000L,
     val windowNanos: Long = 1_000_000_000L,
     private val cutoffHz: Double = 10.0,
+    private val reaimRad: Double = 0.01,
 ) {
     private var filtered: Double? = null
     private var baseline: Double? = null
@@ -49,6 +54,7 @@ class ShakeTracker(
     private val window = ArrayDeque<Pair<Long, Float>>()
 
     fun update(timeNanos: Long, elevationRad: Float): ShakeReading {
+        baseline?.let { if (abs(elevationRad - it) > reaimRad) reset() }
         val dt = if (filtered == null) 0.0 else (timeNanos - lastTimeNanos).coerceAtLeast(0L).toDouble()
         val rc = 1e9 / (2 * PI * cutoffHz)
         val lowPassed = filtered?.let { it + dt / (rc + dt) * (elevationRad - it) } ?: elevationRad.toDouble()
