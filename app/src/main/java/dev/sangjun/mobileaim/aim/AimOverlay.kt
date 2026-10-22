@@ -2,11 +2,13 @@ package dev.sangjun.mobileaim.aim
 
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.material.icons.filled.FilterCenterFocus
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.TextButton
-import dev.sangjun.mobileaim.app.settings.ReticleSize
+import dev.sangjun.mobileaim.app.settings.AimProfile
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -106,8 +108,9 @@ private enum class AimMode { Adjusting, Shooting }
  *   finger landing elsewhere doesn't teleport it) and resets that zoom's clicks (see
  *   [dev.sangjun.mobileaim.app.settings.ISettingsRepository.setZero]).
  *
- * In both modes [ZeroInfo] under the header's right corner shows the current zoom's clicks and
- * stored zero coordinates.
+ * In the adjusting mode the [AdjustPanel] at the right edge holds the current zoom's clicks and
+ * stored zero coordinates, the arrows and the click size. Right of it, in both modes, the
+ * [ShakeIndicator] shows the muzzle's up-and-down shake.
  */
 @Composable
 fun AimOverlay(
@@ -134,7 +137,6 @@ fun AimOverlay(
     onSaveZeroDrafts: () -> Unit = {},
     onDiscardZeroDrafts: () -> Unit = {},
     onEnabledZoomLevelsChange: (List<Int>) -> Unit = {},
-    onCycleReticleSize: () -> Unit = {},
     maxZoomLevel: Int = ZoomLevels.last,
     onClickSizeChange: (Float) -> Unit = {},
     shake: ShakeReading? = null,
@@ -143,6 +145,8 @@ fun AimOverlay(
     var isSavePromptOpen by remember { mutableStateOf(false) }
     var isZoomPickerOpen by remember { mutableStateOf(false) }
     var isClickSizeOpen by remember { mutableStateOf(false) }
+    // Opens the profile sheet straight on this profile's editor (a just-created one), or on the list when null.
+    var profileSheetEditId by remember { mutableStateOf<String?>(null) }
     var isDragging by remember { mutableStateOf(false) }
     val currentReticle = rememberUpdatedState(uiState.effectiveReticleXFraction to uiState.effectiveReticleYFraction)
     val isAdjusting = mode == AimMode.Adjusting
@@ -178,33 +182,36 @@ fun AimOverlay(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(uiState.effectiveReticleXFraction * size.width, uiState.effectiveReticleYFraction * size.height)
-            if (isDragging) drawZeroingDot(center) else drawRingCrosshair(center, uiState.reticleSize)
+            if (isDragging) drawZeroingDot(center) else drawRingCrosshair(center)
         }
 
-        if (isAdjusting) {
-            CreepPad(
-                isEnabled = uiState.isCreepAvailable,
-                clickSizeMm = uiState.clickSizeMm,
-                onOpenClickSize = { isClickSizeOpen = true },
-                onCreepUp = onCreepUp,
-                onCreepDown = onCreepDown,
-                onCreepLeft = onCreepLeft,
-                onCreepRight = onCreepRight,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp),
-            )
-        }
-
-        if (shake != null) {
-            ShakeIndicator(
-                reading = shake,
-                clickSizeMm = uiState.clickSizeMm,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start).asPaddingValues())
-                    .padding(start = 16.dp),
-            )
+        // Right edge: the adjusting panel (adjusting mode only), then the vertical shake gauge.
+        Row(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(WindowInsets.safeDrawing.only(WindowInsetsSides.End).asPaddingValues())
+                .padding(end = 12.dp, top = 72.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (isAdjusting) {
+                AdjustPanel(
+                    isZeroed = uiState.isZeroed,
+                    xFraction = uiState.reticleXFraction,
+                    yFraction = uiState.reticleYFraction,
+                    elevationClicks = uiState.elevationClicks,
+                    windageClicks = uiState.windageClicks,
+                    isUnsaved = uiState.isZeroUnsaved,
+                    isCreepEnabled = uiState.isCreepAvailable,
+                    clickSizeMm = uiState.clickSizeMm,
+                    onOpenClickSize = { isClickSizeOpen = true },
+                    onCreepUp = onCreepUp,
+                    onCreepDown = onCreepDown,
+                    onCreepLeft = onCreepLeft,
+                    onCreepRight = onCreepRight,
+                )
+            }
+            if (shake != null) ShakeIndicator(reading = shake)
         }
 
         Column(
@@ -217,8 +224,11 @@ fun AimOverlay(
                 // Leaving the adjusting mode with unsaved zero edits asks first — see ZeroDrafts.
                 if (mode == AimMode.Adjusting && next == AimMode.Shooting && uiState.hasUnsavedZeros) isSavePromptOpen = true else mode = next
             },
-            activeProfileName = uiState.activeProfileName,
-            onOpenProfileSheet = onOpenProfileSheet,
+            profiles = uiState.profiles,
+            activeProfileId = uiState.activeProfileId,
+            onSelectProfile = onSelectProfile,
+            onAddProfile = { profileSheetEditId = onAddProfile(); onOpenProfileSheet() },
+            onEditProfiles = { profileSheetEditId = null; onOpenProfileSheet() },
             isLoggingActive = uiState.isLoggingActive,
             onToggleLogging = onToggleLogging,
             onCaptureClick = onCaptureClick,
@@ -230,19 +240,6 @@ fun AimOverlay(
             onZoomChange = onZoomChange,
             enabledZoomLevels = uiState.enabledZoomLevels.filter { it <= maxZoomLevel },
             onOpenZoomPicker = { isZoomPickerOpen = true },
-            reticleSize = uiState.reticleSize,
-            onCycleReticleSize = onCycleReticleSize,
-        )
-        ZeroInfo(
-            isZeroed = uiState.isZeroed,
-            xFraction = uiState.reticleXFraction,
-            yFraction = uiState.reticleYFraction,
-            elevationClicks = uiState.elevationClicks,
-            windageClicks = uiState.windageClicks,
-            isUnsaved = uiState.isZeroUnsaved,
-            modifier = Modifier
-                .padding(WindowInsets.safeDrawing.only(WindowInsetsSides.End).asPaddingValues())
-                .padding(horizontal = 12.dp, vertical = 4.dp),
         )
         }
     }
@@ -274,6 +271,7 @@ fun AimOverlay(
 
     if (isProfileSheetOpen) {
         ProfileSheet(
+            initialEditingProfileId = profileSheetEditId,
             profiles = uiState.profiles,
             activeProfileId = uiState.activeProfileId,
             onSelectProfile = onSelectProfile,
@@ -295,8 +293,11 @@ fun AimOverlay(
 private fun Header(
     mode: AimMode,
     onModeChange: (AimMode) -> Unit,
-    activeProfileName: String,
-    onOpenProfileSheet: () -> Unit,
+    profiles: List<AimProfile>,
+    activeProfileId: String,
+    onSelectProfile: (String) -> Unit,
+    onAddProfile: () -> Unit,
+    onEditProfiles: () -> Unit,
     isLoggingActive: Boolean,
     onToggleLogging: () -> Unit,
     onCaptureClick: () -> Unit,
@@ -308,11 +309,8 @@ private fun Header(
     onZoomChange: (Int) -> Unit,
     enabledZoomLevels: List<Int>,
     onOpenZoomPicker: () -> Unit,
-    reticleSize: ReticleSize,
-    onCycleReticleSize: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isShooting = mode == AimMode.Shooting
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
         shape = RectangleShape,
@@ -349,28 +347,23 @@ private fun Header(
                     active = isFocusMode,
                     onClick = onToggleFocusMode,
                 )
-                // Works in both modes — the right size depends on the shooting position (eye-to-screen distance).
-                LabeledHeaderButton(
-                    icon = Icons.Filled.FilterCenterFocus,
-                    label = when (reticleSize) {
-                        ReticleSize.Small -> "작게"
-                        ReticleSize.Medium -> "보통"
-                        ReticleSize.Large -> "크게"
-                    },
-                    active = false,
-                    onClick = onCycleReticleSize,
-                )
             }
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ActiveProfileLabel(name = activeProfileName, isEnabled = !isShooting, onClick = onOpenProfileSheet)
+                ProfilePicker(
+                    profiles = profiles,
+                    activeProfileId = activeProfileId,
+                    onSelectProfile = onSelectProfile,
+                    onAddProfile = onAddProfile,
+                    onEditProfiles = onEditProfiles,
+                )
                 ZoomButton(
                     zoomLevel = zoomLevel,
                     zoomLevels = enabledZoomLevels,
-                    isEnabled = !isShooting,
+                    isEnabled = true,
                     onZoomChange = onZoomChange,
                     onOpenZoomPicker = onOpenZoomPicker,
                 )
@@ -476,31 +469,66 @@ private fun ZeroInfo(
 }
 
 /**
- * Names the active gun (profile) inside the same chip styling the other header buttons use — the
- * box plus the trailing [Icons.Filled.ArrowDropDown] read as "this is tappable". Opens
- * [ProfileSheet] on tap; dimmed and inert while shooting.
+ * Names the active gun (profile) in the header chip; a tap drops down the saved profiles (tap one
+ * to switch — it also brings back the zoom that gun was last used at), "새로 만들기" (creates one
+ * and opens its name editor) and "편집" (the profile sheet, for renaming and deleting). Works in
+ * both modes: switching guns or zooms picks another saved zero, it never changes one.
  */
 @Composable
-private fun ActiveProfileLabel(
-    name: String,
-    isEnabled: Boolean,
-    onClick: () -> Unit,
+private fun ProfilePicker(
+    profiles: List<AimProfile>,
+    activeProfileId: String,
+    onSelectProfile: (String) -> Unit,
+    onAddProfile: () -> Unit,
+    onEditProfiles: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        onClick = onClick,
-        enabled = isEnabled,
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = if (isEnabled) 0.70f else 0.35f),
-        contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isEnabled) 1f else 0.5f),
-        modifier = modifier,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    var isExpanded by remember { mutableStateOf(false) }
+    val name = profiles.firstOrNull { it.id == activeProfileId }?.name ?: "프로파일"
+    Box(modifier = modifier) {
+        Surface(
+            onClick = { isExpanded = true },
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            Text(text = name, style = MaterialTheme.typography.bodyLarge)
-            Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = "프로파일 목록 열기")
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = name, style = MaterialTheme.typography.bodyLarge)
+                Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = "프로파일 목록 열기")
+            }
+        }
+        DropdownMenu(expanded = isExpanded, onDismissRequest = { isExpanded = false }) {
+            for (profile in profiles) {
+                DropdownMenuItem(
+                    text = { Text(profile.name) },
+                    leadingIcon = {
+                        if (profile.id == activeProfileId) Icon(Icons.Filled.Check, contentDescription = "선택됨") else Spacer(Modifier.size(24.dp))
+                    },
+                    onClick = {
+                        onSelectProfile(profile.id)
+                        isExpanded = false
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("새로 만들기") },
+                leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                onClick = {
+                    isExpanded = false
+                    onAddProfile()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("편집") },
+                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                onClick = {
+                    isExpanded = false
+                    onEditProfiles()
+                },
+            )
         }
     }
 }
@@ -651,6 +679,55 @@ private fun BrightnessCapsuleSlider(
 }
 
 /**
+ * Everything the adjusting mode needs in one block at the right edge: the current zoom's clicks
+ * and stored zero coordinates ([ZeroInfo]) on top, the arrows and the click-size chip
+ * ([CreepPad]) under them.
+ */
+@Composable
+private fun AdjustPanel(
+    isZeroed: Boolean,
+    xFraction: Float,
+    yFraction: Float,
+    elevationClicks: Int,
+    windageClicks: Int,
+    isUnsaved: Boolean,
+    isCreepEnabled: Boolean,
+    clickSizeMm: Float,
+    onOpenClickSize: () -> Unit,
+    onCreepUp: () -> Unit,
+    onCreepDown: () -> Unit,
+    onCreepLeft: () -> Unit,
+    onCreepRight: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ZeroInfo(
+            isZeroed = isZeroed,
+            xFraction = xFraction,
+            yFraction = yFraction,
+            elevationClicks = elevationClicks,
+            windageClicks = windageClicks,
+            isUnsaved = isUnsaved,
+        )
+        CreepPad(
+            isEnabled = isCreepEnabled,
+            clickSizeMm = clickSizeMm,
+            onOpenClickSize = onOpenClickSize,
+            onCreepUp = onCreepUp,
+            onCreepDown = onCreepDown,
+            onCreepLeft = onCreepLeft,
+            onCreepRight = onCreepRight,
+        )
+    }
+}
+
+/**
  * A vertical D-pad of four arrow buttons, shown in "조정" mode: each press dials in one click
  * ([clickSizeMm] at 25m, one square of the zeroing target in use) on the current zoom's zero — the net count
  * shows in [ZeroInfo]. Each arrow moves the reticle itself in
@@ -793,27 +870,23 @@ private fun formatClickReadout(clicks: Int, upLabel: String, downLabel: String):
 }
 
 /**
- * The aiming reticle. The aim point is where the thin center lines cross — they are 1dp wide and
- * stay the same at every [size], so the reticle never adds aiming error or hides the target (1dp is
- * under one 8mm square at 25m from about 8x up). [size] only scales the ring and the thicker outer
- * ticks, which make the reticle easy to find at different eye-to-screen distances. The thick parts
- * get a thin dark outline so they show against a bright sky as well as dark ground.
+ * The aiming reticle, shaped like a rear-sight aperture: a ring with outer ticks and a thin cross
+ * inside. The aim point is where the thin center lines cross — they are 1dp wide, so the reticle
+ * never adds aiming error or hides the target (1dp is under one 8mm square at 25m from about 8x
+ * up). The ring and ticks only help find the reticle; they are drawn slightly translucent
+ * ([ReticleRingAlpha]) so the target behind them still shows, with a thin dark outline so they
+ * stand out against a bright sky as well as dark ground.
  */
-private fun DrawScope.drawRingCrosshair(center: Offset, size: ReticleSize) {
-    val (ringRadiusDp, tickLengthDp, strokeDp) = when (size) {
-        ReticleSize.Small -> Triple(12f, 8f, 1.5f)
-        ReticleSize.Medium -> Triple(18f, 14f, 2f)
-        ReticleSize.Large -> Triple(26f, 20f, 3f)
-    }
-    val ringRadius = ringRadiusDp.dp.toPx()
-    val tickLength = tickLengthDp.dp.toPx()
-    val stroke = strokeDp.dp.toPx()
+private fun DrawScope.drawRingCrosshair(center: Offset) {
+    val ringRadius = 26.dp.toPx()
+    val tickLength = 20.dp.toPx()
+    val stroke = 3.dp.toPx()
     val outline = stroke + 1.5.dp.toPx()
-    val outlineColor = Color.Black.copy(alpha = 0.6f)
+    val outlineColor = Color.Black.copy(alpha = 0.6f * ReticleRingAlpha)
     val directions = listOf(Offset(0f, -1f), Offset(0f, 1f), Offset(-1f, 0f), Offset(1f, 0f))
 
     // outline first, then the red strokes on top
-    for ((color, width) in listOf(outlineColor to outline, ReticleDotColor to stroke)) {
+    for ((color, width) in listOf(outlineColor to outline, ReticleDotColor.copy(alpha = ReticleRingAlpha) to stroke)) {
         drawCircle(color = color, radius = ringRadius, center = center, style = Stroke(width = width))
         for (d in directions) {
             drawLine(color = color, start = center + d * ringRadius, end = center + d * (ringRadius + tickLength), strokeWidth = width)
@@ -825,6 +898,9 @@ private fun DrawScope.drawRingCrosshair(center: Offset, size: ReticleSize) {
         drawLine(color = ReticleDotColor, start = center, end = center + d * ringRadius, strokeWidth = thin)
     }
 }
+
+/** Opacity of the reticle's thick ring and ticks — slightly see-through; the thin aiming cross stays opaque. */
+private const val ReticleRingAlpha = 0.7f
 
 /**
  * While a drag is moving the zero, the reticle is this plain translucent dot instead of the
@@ -896,23 +972,21 @@ private fun ZoomPickerDialog(
 
 /**
  * The muzzle's up-and-down shake, measured by the IMU (see
- * [dev.sangjun.mobileaim.app.sensor.ShakeMonitor]): a vertical track at the screen's left edge
- * whose dot is the current deviation from the recent average aim (up = muzzle higher), scaled in
- * zeroing-target squares ([clickSizeMm] at 25m, ticks at ±1 square, full scale ±[ShakeFullScaleSquares]).
- * Under it, the shake over the last second as millimetres at 25m and squares. The dot is green
- * within half a square, amber within one, red beyond — a shot is best let off while it is green.
+ * [dev.sangjun.mobileaim.app.sensor.ShakeMonitor]): a vertical track whose dot is the current
+ * deviation from the recent average aim (up = muzzle higher), in milliradians (ticks at ±1 mrad,
+ * full scale ±[ShakeFullScaleMrad]). Under it, the shake over the last second as millimetres at
+ * 25m and milliradians. Green under [ShakeGreenMrad], amber under [ShakeAmberMrad], red beyond.
  */
 @Composable
 private fun ShakeIndicator(
     reading: ShakeReading,
-    clickSizeMm: Float,
     modifier: Modifier = Modifier,
 ) {
-    val rmsMm = reading.rmsRad.toMmAt25m()
-    val deviationSquares = reading.deviationRad.toMmAt25m() / clickSizeMm
+    val rmsMrad = reading.rmsRad * 1000f
+    val deviationMrad = reading.deviationRad * 1000f
     val color = when {
-        rmsMm <= clickSizeMm * 0.5f -> Color(0xFF4CAF50)
-        rmsMm <= clickSizeMm -> Color(0xFFFFC107)
+        rmsMrad < ShakeGreenMrad -> Color(0xFF4CAF50)
+        rmsMrad < ShakeAmberMrad -> Color(0xFFFFC107)
         else -> Color(0xFFF44336)
     }
     Column(
@@ -922,25 +996,31 @@ private fun ShakeIndicator(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(text = "상하 떨림", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
-        Canvas(modifier = Modifier.size(width = 16.dp, height = 140.dp)) {
+        Text(text = "상하", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
+        Canvas(modifier = Modifier.size(width = 16.dp, height = 120.dp)) {
             val midY = size.height / 2f
-            val perSquare = midY / ShakeFullScaleSquares
+            val perMrad = midY / ShakeFullScaleMrad
             val x = size.width / 2f
             val track = Color.White.copy(alpha = 0.6f)
             drawLine(track, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.dp.toPx())
             drawLine(track, Offset(0f, midY), Offset(size.width, midY), strokeWidth = 2.dp.toPx())
             for (sign in listOf(-1f, 1f)) {
-                val y = midY + sign * perSquare
+                val y = midY + sign * perMrad
                 drawLine(track, Offset(x - 4.dp.toPx(), y), Offset(x + 4.dp.toPx(), y), strokeWidth = 1.dp.toPx())
             }
-            val dotY = midY - deviationSquares.coerceIn(-ShakeFullScaleSquares, ShakeFullScaleSquares) * perSquare
+            val dotY = midY - deviationMrad.coerceIn(-ShakeFullScaleMrad, ShakeFullScaleMrad) * perMrad
             drawCircle(color, radius = 6.dp.toPx(), center = Offset(x, dotY))
         }
-        Text(text = "±%.0fmm".format(rmsMm), style = MaterialTheme.typography.labelSmall, color = color)
-        Text(text = "%.1f칸".format(rmsMm / clickSizeMm), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
+        Text(text = "±%.0fmm".format(reading.rmsRad.toMmAt25m()), style = MaterialTheme.typography.labelSmall, color = color)
+        Text(text = "%.1fmrad".format(rmsMrad), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
     }
 }
 
-/** The shake track's half-height, in zeroing-target squares. */
-private const val ShakeFullScaleSquares = 4f
+/** The shake track's half-height, in milliradians (at 25m, 1 mrad is 25mm). */
+private const val ShakeFullScaleMrad = 3f
+
+/** Shake (RMS over the last second) under this is shown green. */
+private const val ShakeGreenMrad = 1f
+
+/** Shake under this (and at least [ShakeGreenMrad]) is shown amber; more is red. */
+private const val ShakeAmberMrad = 2f

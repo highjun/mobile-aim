@@ -42,7 +42,8 @@ import dev.sangjun.mobileaim.app.settings.AimProfile
 const val ProfileSheetTestTag = "profile_sheet"
 
 /**
- * The header's "프로파일" chip opens this bottom sheet — a flat list of saved [AimProfile]s (tap
+ * The header's profile dropdown opens this bottom sheet ("편집", or "새로 만들기" straight on the new
+ * profile's editor via [initialEditingProfileId]) — a flat list of saved [AimProfile]s (tap
  * to select) plus an "새 프로파일" row, with a pencil icon on each row that switches to an inline
  * editor for that profile's name (see [ProfileEditor]). Replaces the old
  * fixed 화기/수동 `AimMode` toggle with an arbitrary number of named zeros.
@@ -50,6 +51,7 @@ const val ProfileSheetTestTag = "profile_sheet"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSheet(
+    initialEditingProfileId: String? = null,
     profiles: List<AimProfile>,
     activeProfileId: String,
     onSelectProfile: (String) -> Unit,
@@ -58,7 +60,7 @@ fun ProfileSheet(
     onDeleteProfile: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var editingProfileId by remember { mutableStateOf<String?>(null) }
+    var editingProfileId by remember { mutableStateOf(initialEditingProfileId) }
     val editingProfile = profiles.firstOrNull { it.id == editingProfileId }
     // This app is landscape-only, so the sheet's default "partially expanded" resting state would
     // show only a sliver of content — skip straight to fully expanded (the content inside still

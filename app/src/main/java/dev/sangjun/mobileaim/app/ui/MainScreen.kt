@@ -207,7 +207,6 @@ fun MainScreen(
             onSaveZeroDrafts = aimViewModel::saveZeroDrafts,
             onDiscardZeroDrafts = aimViewModel::discardZeroDrafts,
             onEnabledZoomLevelsChange = aimViewModel::onEnabledZoomLevelsChange,
-            onCycleReticleSize = aimViewModel::onCycleReticleSize,
             maxZoomLevel = maxZoomLevel,
             onClickSizeChange = aimViewModel::onClickSizeChange,
             shake = shake,

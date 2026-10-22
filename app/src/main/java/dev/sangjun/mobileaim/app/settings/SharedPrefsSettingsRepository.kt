@@ -91,9 +91,11 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
     }
 
     override fun setActiveProfile(profileId: String) {
-        if (mutableSettings.value.profiles.none { it.id == profileId }) return
-        prefs.edit().putString(KEY_ACTIVE_PROFILE_ID, profileId).apply()
-        mutableSettings.value = mutableSettings.value.copy(activeProfileId = profileId)
+        val profile = mutableSettings.value.profiles.firstOrNull { it.id == profileId } ?: return
+        // A gun brings back the zoom it was last used at (see AimProfile.lastZoomLevel).
+        val zoomLevel = profile.lastZoomLevel?.coerceIn(ZoomLevels.first, ZoomLevels.last) ?: mutableSettings.value.zoomLevel
+        prefs.edit().putString(KEY_ACTIVE_PROFILE_ID, profileId).putInt(KEY_ZOOM_LEVEL, zoomLevel).apply()
+        mutableSettings.value = mutableSettings.value.copy(activeProfileId = profileId, zoomLevel = zoomLevel)
     }
 
     override fun addProfile(profile: AimProfile) {
@@ -129,6 +131,7 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
         val clamped = zoomLevel.coerceIn(ZoomLevels.first, ZoomLevels.last)
         prefs.edit().putInt(KEY_ZOOM_LEVEL, clamped).apply()
         mutableSettings.value = mutableSettings.value.copy(zoomLevel = clamped)
+        updateActiveProfile { it.copy(lastZoomLevel = clamped) }
     }
 
     override fun saveZero(profileId: String, zoomLevel: Int, zero: ZoomZero) {
@@ -196,6 +199,7 @@ private fun parseProfiles(json: String): List<AimProfile> {
 private fun AimProfile.toJson(): JSONObject = JSONObject().apply {
     put("id", id)
     put("name", name)
+    lastZoomLevel?.let { put("lastZoomLevel", it) }
     put("zeros", JSONObject().apply {
         for ((zoomLevel, zero) in zeros) {
             put(
@@ -235,5 +239,6 @@ private fun JSONObject.toAimProfile(): AimProfile {
         elevationClicks = optInt("elevationClicks", 0),
         windageClicks = optInt("windageClicks", 0),
     )
-    return AimProfile(id = getString("id"), name = getString("name"), zeros = zeros)
+    val lastZoomLevel = if (has("lastZoomLevel")) getInt("lastZoomLevel") else null
+    return AimProfile(id = getString("id"), name = getString("name"), zeros = zeros, lastZoomLevel = lastZoomLevel)
 }

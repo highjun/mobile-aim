@@ -39,11 +39,16 @@ data class ZoomZero(
  * Each zoom keeps its own zero instead of reprojecting one zero across zooms: on a multi-lens
  * phone (Galaxy S25 Ultra) CameraX may switch to a telephoto lens as zoom goes up, and that lens's
  * optical axis differs from the main lens's, so a zero captured at one zoom doesn't carry over.
+ *
+ * [lastZoomLevel] is the zoom this gun was last used at — switching to the profile switches the
+ * camera to it, so picking a gun brings back its zoom and that zoom's zero together. Null for a
+ * profile never used yet (the current zoom stays).
  */
 data class AimProfile(
     val id: String,
     val name: String,
     val zeros: Map<Int, ZoomZero> = emptyMap(),
+    val lastZoomLevel: Int? = null,
 ) {
     fun zeroFor(zoomLevel: Int): ZoomZero? = zeros[zoomLevel]
 }

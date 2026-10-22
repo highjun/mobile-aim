@@ -153,4 +153,22 @@ class SharedPrefsSettingsRepositoryTest {
         SharedPrefsSettingsRepository(context).updateClickSizeMm(500f)
         assertEquals(50f, SharedPrefsSettingsRepository(context).settings.value.clickSizeMm, 0f)
     }
+
+    @Test
+    fun `switching profile brings back the zoom it was last used at`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SharedPrefsSettingsRepository(context)
+        val (first, second) = repository.settings.value.profiles.take(2).map { it.id }
+
+        repository.setActiveProfile(first)
+        repository.updateZoomLevel(8)
+        repository.setActiveProfile(second)
+        repository.updateZoomLevel(3)
+        repository.setActiveProfile(first)
+        assertEquals(8, repository.settings.value.zoomLevel)
+
+        val reloaded = SharedPrefsSettingsRepository(context)
+        reloaded.setActiveProfile(second)
+        assertEquals(3, reloaded.settings.value.zoomLevel)
+    }
 }

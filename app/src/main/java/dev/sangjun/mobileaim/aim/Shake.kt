@@ -1,6 +1,7 @@
 package dev.sangjun.mobileaim.aim
 
-import kotlin.math.asin
+import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.exp
 import kotlin.math.sqrt
 
@@ -19,13 +20,20 @@ fun Float.toMmAt25m(): Float = this * ZeroingDistanceMeters * 1000f
  * Elevation (pitch above the horizon, radians) of where the back camera looks, from a 3x3
  * device-to-world rotation matrix ([android.hardware.SensorManager.getRotationMatrixFromVector],
  * row-major, world Z up). The back camera looks along the device's -Z axis, so its world-frame
- * direction is minus the matrix's third column and its elevation is asin(-R[8]). Independent of how
- * the phone is turned in its mount (portrait or landscape).
+ * direction is minus the matrix's third column (-R[2], -R[5], -R[8]). Its elevation is taken with
+ * atan2 rather than asin(-R[8]) so it stays well-conditioned whatever the phone's pose. It is 0
+ * with the phone standing upright (screen perpendicular to the ground, as mounted on the rifle) and
+ * independent of whether the phone is turned portrait or landscape in its mount.
  */
-fun cameraElevationRad(rotationMatrix: FloatArray): Float = asin((-rotationMatrix[8]).coerceIn(-1f, 1f))
+fun cameraElevationRad(rotationMatrix: FloatArray): Float {
+    val horizontal = sqrt(rotationMatrix[2] * rotationMatrix[2] + rotationMatrix[5] * rotationMatrix[5])
+    return atan2(-rotationMatrix[8], horizontal)
+}
 
 /**
- * Turns a stream of camera elevations into a [ShakeReading]: an exponential moving average with
+ * Turns a stream of camera elevations into a [ShakeReading]. A first-order low-pass at
+ * [cutoffHz] first drops the fast buzz a handheld aim never makes (desk or keyboard vibration,
+ * sensor noise). Then an exponential moving average with
  * time constant [baselineTauNanos] stands in for "where the shooter is holding", and the shake is
  * the elevation minus that average — so a slow, deliberate change of aim fades out while the quick
  * up-and-down tremor stays. Pure (no Android), so it is unit-tested directly.
@@ -33,22 +41,22 @@ fun cameraElevationRad(rotationMatrix: FloatArray): Float = asin((-rotationMatri
 class ShakeTracker(
     private val baselineTauNanos: Long = 1_000_000_000L,
     val windowNanos: Long = 1_000_000_000L,
+    private val cutoffHz: Double = 10.0,
 ) {
+    private var filtered: Double? = null
     private var baseline: Double? = null
     private var lastTimeNanos = 0L
     private val window = ArrayDeque<Pair<Long, Float>>()
 
     fun update(timeNanos: Long, elevationRad: Float): ShakeReading {
+        val dt = if (filtered == null) 0.0 else (timeNanos - lastTimeNanos).coerceAtLeast(0L).toDouble()
+        val rc = 1e9 / (2 * PI * cutoffHz)
+        val lowPassed = filtered?.let { it + dt / (rc + dt) * (elevationRad - it) } ?: elevationRad.toDouble()
+        filtered = lowPassed
         val previous = baseline
-        baseline = if (previous == null) {
-            elevationRad.toDouble()
-        } else {
-            val dt = (timeNanos - lastTimeNanos).coerceAtLeast(0L).toDouble()
-            val alpha = 1.0 - exp(-dt / baselineTauNanos)
-            previous + alpha * (elevationRad - previous)
-        }
+        baseline = if (previous == null) lowPassed else previous + (1.0 - exp(-dt / baselineTauNanos)) * (lowPassed - previous)
         lastTimeNanos = timeNanos
-        val deviation = (elevationRad - baseline!!).toFloat()
+        val deviation = (lowPassed - baseline!!).toFloat()
         window.addLast(timeNanos to deviation)
         while (window.isNotEmpty() && timeNanos - window.first().first > windowNanos) window.removeFirst()
         val meanSquare = window.sumOf { (_, d) -> (d * d).toDouble() } / window.size
@@ -56,6 +64,7 @@ class ShakeTracker(
     }
 
     fun reset() {
+        filtered = null
         baseline = null
         window.clear()
     }

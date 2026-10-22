@@ -7,6 +7,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
@@ -89,6 +92,11 @@ class AimOverlayScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot.png")
+
+        // Shooting mode still lets the gun be switched: the chip drops down the saved profiles.
+        composeRule.onNodeWithContentDescription("프로파일 목록 열기").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("새로 만들기").assertExists()
         println("SCREENSHOT_SAVED_TO: /tmp/mobileaim_ui_screenshot.png")
     }
 }
