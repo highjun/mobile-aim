@@ -1,6 +1,8 @@
 package dev.sangjun.mobileaim.app.settings
 
 import android.content.Context
+import dev.sangjun.mobileaim.aim.ClickSizeMmRange
+import dev.sangjun.mobileaim.aim.DefaultClickSizeMm
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -41,6 +43,7 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
                 zoomLevel = loadZoomLevel(),
                 enabledZoomLevels = loadEnabledZoomLevels(),
                 reticleSize = loadReticleSize(),
+                clickSizeMm = loadClickSizeMm(),
             )
         }
 
@@ -53,6 +56,7 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
             zoomLevel = loadZoomLevel(),
             enabledZoomLevels = loadEnabledZoomLevels(),
             reticleSize = loadReticleSize(),
+            clickSizeMm = loadClickSizeMm(),
         )
     }
 
@@ -65,6 +69,9 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
 
     private fun loadReticleSize(): ReticleSize =
         ReticleSize.entries.getOrElse(prefs.getInt(KEY_RETICLE_SIZE, ReticleSize.Medium.ordinal)) { ReticleSize.Medium }
+
+    private fun loadClickSizeMm(): Float =
+        prefs.getFloat(KEY_CLICK_SIZE_MM, DefaultClickSizeMm).coerceIn(ClickSizeMmRange.start, ClickSizeMmRange.endInclusive)
 
     private fun loadZoomLevel(): Int = prefs.getInt(KEY_ZOOM_LEVEL, ZoomLevels.first).coerceIn(ZoomLevels.first, ZoomLevels.last)
 
@@ -140,6 +147,12 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
         mutableSettings.value = mutableSettings.value.copy(reticleSize = size)
     }
 
+    override fun updateClickSizeMm(clickSizeMm: Float) {
+        val clamped = clickSizeMm.coerceIn(ClickSizeMmRange.start, ClickSizeMmRange.endInclusive)
+        prefs.edit().putFloat(KEY_CLICK_SIZE_MM, clamped).apply()
+        mutableSettings.value = mutableSettings.value.copy(clickSizeMm = clamped)
+    }
+
     private fun updateActiveProfile(transform: (AimProfile) -> AimProfile) {
         updateProfile(mutableSettings.value.activeProfileId, transform)
     }
@@ -164,6 +177,7 @@ class SharedPrefsSettingsRepository(context: Context) : ISettingsRepository {
         const val KEY_ZOOM_LEVEL = "zoom_level"
         const val KEY_ENABLED_ZOOM_LEVELS = "enabled_zoom_levels"
         const val KEY_RETICLE_SIZE = "reticle_size"
+        const val KEY_CLICK_SIZE_MM = "click_size_mm"
 
         // v0 keys — read-only, kept around for the migration; never written after schema v1.
         const val KEY_RETICLE_X_FRACTION = "reticle_x_fraction"

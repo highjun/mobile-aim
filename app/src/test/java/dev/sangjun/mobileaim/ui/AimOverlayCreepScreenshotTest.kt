@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
+import dev.sangjun.mobileaim.aim.ShakeReading
 import dev.sangjun.mobileaim.app.settings.DefaultAimProfiles
 import dev.sangjun.mobileaim.app.settings.FirearmProfileId
 import dev.sangjun.mobileaim.app.ui.theme.MobileAimTheme
@@ -59,6 +60,7 @@ class AimOverlayCreepScreenshotTest {
                             isZeroed = true,
                             isZeroUnsaved = true,
                             hasUnsavedZeros = true,
+                            clickSizeMm = 10f,
                         ),
                         onReticleDrag = { _, _ -> },
                         onToggleLogging = {},
@@ -78,6 +80,7 @@ class AimOverlayCreepScreenshotTest {
                         onCreepDown = {},
                         onCreepLeft = {},
                         onCreepRight = {},
+                        shake = ShakeReading(deviationRad = 0.0005f, rmsRad = 0.00025f),
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -88,6 +91,14 @@ class AimOverlayCreepScreenshotTest {
         composeRule.onNodeWithText("조정").performClick()
         composeRule.waitForIdle()
         composeRule.onRoot().captureRoboImage("/tmp/mobileaim_ui_screenshot_creep.png")
+
+        // The chip under the pad opens the click-size picker.
+        composeRule.onNodeWithText("1클릭 10mm").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1클릭 크기").assertExists()
+        composeRule.onAllNodes(isRoot()).onLast().captureRoboImage("/tmp/mobileaim_ui_screenshot_click_size.png")
+        composeRule.onNodeWithText("취소").performClick()
+        composeRule.waitForIdle()
 
         // Leaving the adjusting mode with an unsaved zero asks first.
         composeRule.onNodeWithText("사격").performClick()

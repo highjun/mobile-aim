@@ -1,5 +1,8 @@
 package dev.sangjun.mobileaim.app.ui
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import dev.sangjun.mobileaim.app.sensor.ShakeMonitor
 import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
@@ -90,6 +93,24 @@ fun MainScreen(
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
     var isProfileSheetOpen by remember { mutableStateOf(false) }
     val uiState by aimViewModel.uiState.collectAsState()
+
+    // Muzzle shake for the on-screen indicator — listens only while the screen is resumed.
+    val shakeMonitor = remember { ShakeMonitor(context) }
+    val shake by shakeMonitor.reading.collectAsState()
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> shakeMonitor.start()
+                Lifecycle.Event.ON_PAUSE -> shakeMonitor.stop()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            shakeMonitor.stop()
+        }
+    }
 
     // Applies the header's chosen zoom level to the actual bound camera — clamped to what the
     // hardware reports, in case a device's max zoom ratio is below 8x.
@@ -188,6 +209,8 @@ fun MainScreen(
             onEnabledZoomLevelsChange = aimViewModel::onEnabledZoomLevelsChange,
             onCycleReticleSize = aimViewModel::onCycleReticleSize,
             maxZoomLevel = maxZoomLevel,
+            onClickSizeChange = aimViewModel::onClickSizeChange,
+            shake = shake,
             modifier = Modifier.fillMaxSize(),
         )
     }

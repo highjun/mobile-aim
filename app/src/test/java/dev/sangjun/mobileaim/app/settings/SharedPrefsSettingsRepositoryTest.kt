@@ -141,4 +141,16 @@ class SharedPrefsSettingsRepositoryTest {
 
         assertEquals(ReticleSize.Large, SharedPrefsSettingsRepository(context).settings.value.reticleSize)
     }
+
+    @Test
+    fun `click size survives a reload and is clamped`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        assertEquals(8f, SharedPrefsSettingsRepository(context).settings.value.clickSizeMm, 0f)
+
+        SharedPrefsSettingsRepository(context).updateClickSizeMm(10f)
+        assertEquals(10f, SharedPrefsSettingsRepository(context).settings.value.clickSizeMm, 0f)
+
+        SharedPrefsSettingsRepository(context).updateClickSizeMm(500f)
+        assertEquals(50f, SharedPrefsSettingsRepository(context).settings.value.clickSizeMm, 0f)
+    }
 }

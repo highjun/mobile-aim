@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimUiState
+import dev.sangjun.mobileaim.aim.ShakeReading
 import dev.sangjun.mobileaim.app.settings.DefaultAimProfiles
 import dev.sangjun.mobileaim.app.settings.ReticleSize
 import dev.sangjun.mobileaim.app.settings.FirearmProfileId
@@ -79,6 +80,7 @@ class AimOverlayScreenshotTest {
                         onCreepDown = {},
                         onCreepLeft = {},
                         onCreepRight = {},
+                        shake = ShakeReading(deviationRad = 0.0002f, rmsRad = 0.0001f),
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

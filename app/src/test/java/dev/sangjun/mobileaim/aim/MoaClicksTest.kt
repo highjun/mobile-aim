@@ -51,4 +51,13 @@ class MoaClicksTest {
     fun `non-positive reference length yields zero offset`() {
         assertEquals(0f, clicksToFraction(clicks = 4, focalLengthPx = 1000f, referenceLengthPx = 0f), 0f)
     }
+
+    @Test
+    fun `click size follows the zeroing target square`() {
+        val focalLengthPx = 2807f
+        val k1a = clicksToFraction(clicks = 1, focalLengthPx = focalLengthPx, referenceLengthPx = 1f, radiansPerClick = radiansPerClick(ZeroingTarget.K1A.squareMm))
+
+        assertEquals(focalLengthPx * 10f / 25_000f, k1a, 1e-3f)
+        assertEquals(radiansPerClick(DefaultClickSizeMm), RadiansPerClick, 0f)
+    }
 }

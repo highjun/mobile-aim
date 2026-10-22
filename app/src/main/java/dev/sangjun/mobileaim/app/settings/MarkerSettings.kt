@@ -1,5 +1,7 @@
 package dev.sangjun.mobileaim.app.settings
 
+import dev.sangjun.mobileaim.aim.DefaultClickSizeMm
+
 /**
  * Persisted user settings.
  *
@@ -17,6 +19,10 @@ package dev.sangjun.mobileaim.app.settings
  * [enabledZoomLevels]: which of [ZoomLevels] the header's zoom picker lists, sorted.
  *
  * [reticleSize]: see [ReticleSize] — picked per shooting position (eye-to-screen distance differs).
+ *
+ * [clickSizeMm]: how far one creep-pad click moves the reticle, in millimetres at 25m — one square
+ * of the zeroing target in use (see [dev.sangjun.mobileaim.aim.ZeroingTarget]). Global rather than
+ * per gun: it follows the paper target, not the gun. Changing it rescales clicks already dialed in.
  */
 data class MarkerSettings(
     val profiles: List<AimProfile> = DefaultAimProfiles,
@@ -25,6 +31,7 @@ data class MarkerSettings(
     val zoomLevel: Int = ZoomLevels.first,
     val enabledZoomLevels: List<Int> = DefaultEnabledZoomLevels,
     val reticleSize: ReticleSize = ReticleSize.Medium,
+    val clickSizeMm: Float = DefaultClickSizeMm,
 ) {
     /** Falls back to the first profile if [activeProfileId] doesn't match any — shouldn't happen outside a corrupted store, since [dev.sangjun.mobileaim.app.settings.SharedPrefsSettingsRepository] never persists an empty profile list. */
     val activeProfile: AimProfile

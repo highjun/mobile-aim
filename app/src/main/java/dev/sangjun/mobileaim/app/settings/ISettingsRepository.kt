@@ -45,4 +45,7 @@ interface ISettingsRepository {
 
     /** Persists the reticle size step. */
     fun updateReticleSize(size: ReticleSize)
+
+    /** One creep-pad click in millimetres at 25m (see [MarkerSettings.clickSizeMm]); clamped to [dev.sangjun.mobileaim.aim.ClickSizeMmRange]. */
+    fun updateClickSizeMm(clickSizeMm: Float)
 }

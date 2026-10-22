@@ -56,10 +56,11 @@ class AimViewModel(
         val reticleYFraction = zero?.yFraction ?: 0.5f
         val elevationClicks = zero?.elevationClicks ?: 0
         val windageClicks = zero?.windageClicks ?: 0
-        // Clicks are angle-native (see RadiansPerClick), so only the *current* zoom's effective focal length
+        // Clicks are angle-native (see radiansPerClick), so only the *current* zoom's effective focal length
         // matters for converting them to a screen fraction — see CameraFov.zoomRatio's KDoc.
-        val elevationOffset = cameraFov?.let { clicksToFraction(elevationClicks, it.focalLengthYPx * it.zoomRatio, it.referenceHeightPx) } ?: 0f
-        val windageOffset = cameraFov?.let { clicksToFraction(windageClicks, it.focalLengthYPx * it.zoomRatio, it.referenceWidthPx) } ?: 0f
+        val clickRad = radiansPerClick(settings.clickSizeMm)
+        val elevationOffset = cameraFov?.let { clicksToFraction(elevationClicks, it.focalLengthYPx * it.zoomRatio, it.referenceHeightPx, clickRad) } ?: 0f
+        val windageOffset = cameraFov?.let { clicksToFraction(windageClicks, it.focalLengthYPx * it.zoomRatio, it.referenceWidthPx, clickRad) } ?: 0f
 
         AimUiState(
             reticleXFraction = reticleXFraction,
@@ -80,6 +81,7 @@ class AimViewModel(
             hasUnsavedZeros = !drafts.isEmpty,
             enabledZoomLevels = settings.enabledZoomLevels,
             reticleSize = settings.reticleSize,
+            clickSizeMm = settings.clickSizeMm,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AimUiState())
 
@@ -92,7 +94,7 @@ class AimViewModel(
         zeroDraftsFlow.value = zeroDraftsFlow.value.drag(settings.activeProfileId, settings.zoomLevel, xFraction.coerceIn(0f, 1f), yFraction.coerceIn(0f, 1f))
     }
 
-    /** Moves the reticle up by one click ([RadiansPerClick]) — unsaved until [saveZeroDrafts]; see [AimUiState.effectiveReticleYFraction]. */
+    /** Moves the reticle up by one click (see [AimUiState.clickSizeMm]) — unsaved until [saveZeroDrafts]; see [AimUiState.effectiveReticleYFraction]. */
     fun onCreepUp() = click(elevationDelta = 1, windageDelta = 0)
 
     /** Moves the reticle down by one click. */
@@ -163,6 +165,9 @@ class AimViewModel(
         val sizes = ReticleSize.entries
         settingsRepository.updateReticleSize(sizes[(settingsRepository.settings.value.reticleSize.ordinal + 1) % sizes.size])
     }
+
+    /** One click in millimetres at 25m — one square of the zeroing target in use (see [ZeroingTarget]). */
+    fun onClickSizeChange(clickSizeMm: Float) = settingsRepository.updateClickSizeMm(clickSizeMm)
 
     /** [brightness] is 0..1; persisted so the manual screen brightness survives app restarts. */
     fun onBrightnessChange(brightness: Float) {

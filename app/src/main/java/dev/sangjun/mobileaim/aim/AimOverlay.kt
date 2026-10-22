@@ -100,7 +100,7 @@ private enum class AimMode { Adjusting, Shooting }
  *   at a zoom with no zero yet (the reticle then sits at screen center).
  * - "조정" (adjusting): dragging moves the current zoom's zero — onto the laser bore-sighter's dot
  *   or straight onto a group of hits — and the [CreepPad] fine-tunes it by clicks (one click = one
- *   square of the 25m zeroing target, see [RadiansPerClick]). While a finger is dragging, the
+ *   square of the zeroing target in use, see [AimUiState.clickSizeMm] — the chip under the pad picks it). While a finger is dragging, the
  *   reticle turns into a plain translucent dot (a single filled blob lines up with a laser dot more
  *   precisely than the ring does). A drag starts from the reticle's current position (relative — a
  *   finger landing elsewhere doesn't teleport it) and resets that zoom's clicks (see
@@ -136,10 +136,13 @@ fun AimOverlay(
     onEnabledZoomLevelsChange: (List<Int>) -> Unit = {},
     onCycleReticleSize: () -> Unit = {},
     maxZoomLevel: Int = ZoomLevels.last,
+    onClickSizeChange: (Float) -> Unit = {},
+    shake: ShakeReading? = null,
 ) {
     var mode by remember { mutableStateOf(AimMode.Shooting) }
     var isSavePromptOpen by remember { mutableStateOf(false) }
     var isZoomPickerOpen by remember { mutableStateOf(false) }
+    var isClickSizeOpen by remember { mutableStateOf(false) }
     var isDragging by remember { mutableStateOf(false) }
     val currentReticle = rememberUpdatedState(uiState.effectiveReticleXFraction to uiState.effectiveReticleYFraction)
     val isAdjusting = mode == AimMode.Adjusting
@@ -181,6 +184,8 @@ fun AimOverlay(
         if (isAdjusting) {
             CreepPad(
                 isEnabled = uiState.isCreepAvailable,
+                clickSizeMm = uiState.clickSizeMm,
+                onOpenClickSize = { isClickSizeOpen = true },
                 onCreepUp = onCreepUp,
                 onCreepDown = onCreepDown,
                 onCreepLeft = onCreepLeft,
@@ -188,6 +193,17 @@ fun AimOverlay(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp),
+            )
+        }
+
+        if (shake != null) {
+            ShakeIndicator(
+                reading = shake,
+                clickSizeMm = uiState.clickSizeMm,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start).asPaddingValues())
+                    .padding(start = 16.dp),
             )
         }
 
@@ -236,6 +252,14 @@ fun AimOverlay(
             onSave = { onSaveZeroDrafts(); isSavePromptOpen = false; mode = AimMode.Shooting },
             onDiscard = { onDiscardZeroDrafts(); isSavePromptOpen = false; mode = AimMode.Shooting },
             onCancel = { isSavePromptOpen = false },
+        )
+    }
+
+    if (isClickSizeOpen) {
+        ClickSizeDialog(
+            clickSizeMm = uiState.clickSizeMm,
+            onConfirm = { onClickSizeChange(it); isClickSizeOpen = false },
+            onDismiss = { isClickSizeOpen = false },
         )
     }
 
@@ -628,14 +652,17 @@ private fun BrightnessCapsuleSlider(
 
 /**
  * A vertical D-pad of four arrow buttons, shown in "조정" mode: each press dials in one click
- * ([RadiansPerClick], one zeroing-target square at 25m) on the current zoom's zero — the net count
+ * ([clickSizeMm] at 25m, one square of the zeroing target in use) on the current zoom's zero — the net count
  * shows in [ZeroInfo]. Each arrow moves the reticle itself in
  * that direction (not a turret-dial convention) — pressing "위" makes it move up, matching what the
- * shooter sees happen on screen.
+ * shooter sees happen on screen. The chip under the pad shows the click size and opens
+ * [ClickSizeDialog].
  */
 @Composable
 private fun CreepPad(
     isEnabled: Boolean,
+    clickSizeMm: Float,
+    onOpenClickSize: () -> Unit,
     onCreepUp: () -> Unit,
     onCreepDown: () -> Unit,
     onCreepLeft: () -> Unit,
@@ -654,8 +681,68 @@ private fun CreepPad(
             CreepArrowButton(Icons.Filled.KeyboardArrowRight, "오른쪽으로 조정", isEnabled, onCreepRight)
         }
         CreepArrowButton(Icons.Filled.KeyboardArrowDown, "아래로 조정", isEnabled, onCreepDown)
+        Surface(
+            onClick = onOpenClickSize,
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            Text(
+                text = "1클릭 ${formatMm(clickSizeMm)}mm",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        }
     }
 }
+
+private fun formatMm(mm: Float): String = if (mm % 1f == 0f) mm.toInt().toString() else "%.1f".format(mm)
+
+/**
+ * Picks how far one click moves the reticle: one square of the zeroing target in use, in
+ * millimetres at 25m. The K2 (8mm) and K-1A (10mm) targets are one tap; any other square size is
+ * set with the −/+ buttons in [ClickSizeStepMm] steps (no keyboard popping up over the camera).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ClickSizeDialog(
+    clickSizeMm: Float,
+    onConfirm: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var value by remember { mutableStateOf(clickSizeMm) }
+    fun step(delta: Float) {
+        value = (value + delta).coerceIn(ClickSizeMmRange.start, ClickSizeMmRange.endInclusive)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("1클릭 크기") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("쓰는 영점표적지의 한 칸을 고르면, 칸 수만큼 누를 때 조준점이 그 칸만큼 움직입니다(25m 기준).", style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (target in ZeroingTarget.entries) {
+                        FilterChip(
+                            selected = value == target.squareMm,
+                            onClick = { value = target.squareMm },
+                            label = { Text("${target.label} ${formatMm(target.squareMm)}mm") },
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextButton(onClick = { step(-ClickSizeStepMm) }) { Text("−") }
+                    Text("${formatMm(value)}mm", style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = { step(ClickSizeStepMm) }) { Text("+") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(value) }) { Text("저장") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+    )
+}
+
+/** Step of the click-size −/+ buttons, in millimetres at 25m. */
+private const val ClickSizeStepMm = 0.5f
 
 /**
  * A single creep-pad arrow: fires [onClick] immediately on press, then repeats it (after an
@@ -806,3 +893,54 @@ private fun ZoomPickerDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
 }
+
+/**
+ * The muzzle's up-and-down shake, measured by the IMU (see
+ * [dev.sangjun.mobileaim.app.sensor.ShakeMonitor]): a vertical track at the screen's left edge
+ * whose dot is the current deviation from the recent average aim (up = muzzle higher), scaled in
+ * zeroing-target squares ([clickSizeMm] at 25m, ticks at ±1 square, full scale ±[ShakeFullScaleSquares]).
+ * Under it, the shake over the last second as millimetres at 25m and squares. The dot is green
+ * within half a square, amber within one, red beyond — a shot is best let off while it is green.
+ */
+@Composable
+private fun ShakeIndicator(
+    reading: ShakeReading,
+    clickSizeMm: Float,
+    modifier: Modifier = Modifier,
+) {
+    val rmsMm = reading.rmsRad.toMmAt25m()
+    val deviationSquares = reading.deviationRad.toMmAt25m() / clickSizeMm
+    val color = when {
+        rmsMm <= clickSizeMm * 0.5f -> Color(0xFF4CAF50)
+        rmsMm <= clickSizeMm -> Color(0xFFFFC107)
+        else -> Color(0xFFF44336)
+    }
+    Column(
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(text = "상하 떨림", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
+        Canvas(modifier = Modifier.size(width = 16.dp, height = 140.dp)) {
+            val midY = size.height / 2f
+            val perSquare = midY / ShakeFullScaleSquares
+            val x = size.width / 2f
+            val track = Color.White.copy(alpha = 0.6f)
+            drawLine(track, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.dp.toPx())
+            drawLine(track, Offset(0f, midY), Offset(size.width, midY), strokeWidth = 2.dp.toPx())
+            for (sign in listOf(-1f, 1f)) {
+                val y = midY + sign * perSquare
+                drawLine(track, Offset(x - 4.dp.toPx(), y), Offset(x + 4.dp.toPx(), y), strokeWidth = 1.dp.toPx())
+            }
+            val dotY = midY - deviationSquares.coerceIn(-ShakeFullScaleSquares, ShakeFullScaleSquares) * perSquare
+            drawCircle(color, radius = 6.dp.toPx(), center = Offset(x, dotY))
+        }
+        Text(text = "±%.0fmm".format(rmsMm), style = MaterialTheme.typography.labelSmall, color = color)
+        Text(text = "%.1f칸".format(rmsMm / clickSizeMm), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
+    }
+}
+
+/** The shake track's half-height, in zeroing-target squares. */
+private const val ShakeFullScaleSquares = 4f

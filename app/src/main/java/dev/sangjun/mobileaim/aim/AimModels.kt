@@ -40,6 +40,8 @@ data class AimUiState(
     /** Zoom levels the header's zoom picker lists (see [dev.sangjun.mobileaim.app.settings.MarkerSettings.enabledZoomLevels]). */
     val enabledZoomLevels: List<Int> = DefaultEnabledZoomLevels,
     val reticleSize: ReticleSize = ReticleSize.Medium,
+    /** One creep-pad click in millimetres at 25m (see [dev.sangjun.mobileaim.app.settings.MarkerSettings.clickSizeMm]). */
+    val clickSizeMm: Float = DefaultClickSizeMm,
     val profiles: List<AimProfile> = DefaultAimProfiles,
     val activeProfileId: String = DefaultAimProfiles.first().id,
     /** Whether a [dev.sangjun.mobileaim.app.camera.CameraFov] is available yet — gates the creep pad's arrow buttons (see [AimOverlay]) so a press doesn't silently do nothing. */
