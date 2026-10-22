@@ -18,7 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
  * a [ShakeTracker]. The phone is rigidly mounted, so the camera's elevation is the barrel's.
  *
  * [reading] is null until the first sample and after [stop]. Published at most every
- * [PublishIntervalNanos] so the overlay doesn't recompose at the sensor rate.
+ * [PublishIntervalNanos] so the overlay doesn't recompose at the sensor rate. Its [ShakeReading.rmsRad]
+ * (the number and colour on screen) only changes every [RmsHoldNanos] so it can be read; its
+ * [ShakeReading.deviationRad] (the moving dot) stays fresh.
  */
 class ShakeMonitor(context: Context) : SensorEventListener {
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -27,6 +29,8 @@ class ShakeMonitor(context: Context) : SensorEventListener {
     private val tracker = ShakeTracker()
     private val rotationMatrix = FloatArray(9)
     private var lastPublishNanos = 0L
+    private var lastRmsNanos = 0L
+    private var heldRmsRad: Float? = null
     private var isRunning = false
 
     private val mutableReading = MutableStateFlow<ShakeReading?>(null)
@@ -39,6 +43,7 @@ class ShakeMonitor(context: Context) : SensorEventListener {
         if (isRunning || sensor == null) return
         isRunning = true
         tracker.reset()
+        heldRmsRad = null
         sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
     }
 
@@ -52,9 +57,13 @@ class ShakeMonitor(context: Context) : SensorEventListener {
     override fun onSensorChanged(event: SensorEvent) {
         SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
         val shake = tracker.update(event.timestamp, cameraElevationRad(rotationMatrix))
+        if (heldRmsRad == null || event.timestamp - lastRmsNanos >= RmsHoldNanos) {
+            lastRmsNanos = event.timestamp
+            heldRmsRad = shake.rmsRad
+        }
         if (event.timestamp - lastPublishNanos >= PublishIntervalNanos) {
             lastPublishNanos = event.timestamp
-            mutableReading.value = shake
+            mutableReading.value = shake.copy(rmsRad = heldRmsRad ?: shake.rmsRad)
         }
     }
 
@@ -62,5 +71,8 @@ class ShakeMonitor(context: Context) : SensorEventListener {
 
     private companion object {
         const val PublishIntervalNanos = 33_000_000L
+
+        /** About three times a second, slow enough to read. */
+        const val RmsHoldNanos = 333_000_000L
     }
 }
