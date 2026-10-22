@@ -30,9 +30,10 @@ class AimViewModel(
     private val captureLogWriter: ICaptureLogWriter,
 ) : ViewModel() {
     /**
-     * Whether the continuous logging session (IMU CSV here + camera video recording, started by
-     * [dev.sangjun.mobileaim.app.ui.MainScreen] reacting to [uiState]'s [AimUiState.isLoggingActive])
-     * is running. Off by default — never starts on its own, only [toggleLogging] flips it.
+     * Whether the continuous logging session (IMU CSV here + the screen recording that
+     * [dev.sangjun.mobileaim.app.ui.MainScreen] runs alongside it via
+     * [dev.sangjun.mobileaim.app.recording.ScreenRecordingService]) is running. Off by default —
+     * never starts on its own, only [startLogging]/[stopLogging] flip it.
      */
     private val isLoggingActiveFlow = MutableStateFlow(false)
 
@@ -174,12 +175,26 @@ class AimViewModel(
         settingsRepository.updateBrightness(brightness.coerceIn(0f, 1f))
     }
 
-    /** Starts/stops the IMU CSV log; [uiState]'s [AimUiState.isLoggingActive] separately drives video recording. */
-    fun toggleLogging() {
-        val next = !isLoggingActiveFlow.value
-        if (next) motionLogger.start() else motionLogger.stop()
-        isLoggingActiveFlow.value = next
+    /**
+     * Starts the IMU CSV log. Called by [dev.sangjun.mobileaim.app.ui.MainScreen] only once the user
+     * has accepted the system's screen-recording consent dialog, so a cancelled dialog never leaves
+     * a CSV session running without its video. No-op if already running.
+     */
+    fun startLogging() {
+        if (isLoggingActiveFlow.value) return
+        motionLogger.start()
+        isLoggingActiveFlow.value = true
     }
+
+    /** Stops the IMU CSV log — the logging button, the app leaving the foreground, or the screen recording ending on its own. No-op if not running. */
+    fun stopLogging() {
+        if (!isLoggingActiveFlow.value) return
+        motionLogger.stop()
+        isLoggingActiveFlow.value = false
+    }
+
+    /** Synchronous read for callers outside composition (lifecycle callbacks) — [uiState] is `WhileSubscribed`, so its value can lag. */
+    val isLoggingActive: Boolean get() = isLoggingActiveFlow.value
 
     override fun onCleared() {
         motionLogger.stop()

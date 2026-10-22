@@ -3,29 +3,29 @@ package dev.sangjun.mobileaim.app.ui
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import dev.sangjun.mobileaim.app.sensor.ShakeMonitor
+import android.Manifest
 import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.PixelCopy
 import android.view.Window
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraState
 import androidx.camera.core.ZoomState
-import androidx.camera.video.FileOutputOptions
-import androidx.camera.video.MediaStoreOutputOptions
-import androidx.camera.video.Recorder
-import androidx.camera.video.Recording
-import androidx.camera.video.VideoCapture
-import androidx.camera.video.VideoRecordEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,7 +48,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.sangjun.mobileaim.aim.AimOverlay
 import dev.sangjun.mobileaim.aim.AimViewModel
 import dev.sangjun.mobileaim.app.camera.CameraPreview
+import dev.sangjun.mobileaim.app.recording.ScreenRecordingService
+import dev.sangjun.mobileaim.app.recording.ScreenRecordingState
 import dev.sangjun.mobileaim.app.settings.ZoomLevels
+import dev.sangjun.mobileaim.utils.MediaRoot
 import dev.sangjun.mobileaim.utils.fileTimestampNow
 import java.io.File
 import java.io.FileOutputStream
@@ -57,23 +60,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/**
- * `MobileAim`, the shared subfolder name every piece of MobileAim output lands under. Where that
- * subfolder actually lives differs by media type on API 29+, though, because of a MediaStore
- * restriction we don't control: `MediaStore.Images`/`MediaStore.Video` only accept
- * [Environment.DIRECTORY_PICTURES]/[Environment.DIRECTORY_MOVIES] (or DCIM) as the *top-level*
- * `RELATIVE_PATH` segment — anything else throws `IllegalArgumentException: Primary directory
- * MobileAim not allowed for content://media/external/...` at save time, which CameraX swallows into
- * its error callback, so the previous "one unified `MobileAim/{images,videos,sensors}` root" attempt
- * silently failed to save every photo/video (no crash, no toast, no file). So: photos land in
- * `Pictures/$MediaRoot`, videos in `Movies/$MediaRoot` — both required top-level roots, with
- * `MediaRoot` as the sub-brand folder inside them. Sensor CSVs (see
- * [dev.sangjun.mobileaim.logging.CaptureLogWriter]/[dev.sangjun.mobileaim.logging.SensorMotionLogger])
- * go through `MediaStore.Downloads` instead, which has no such restriction, so they keep the fully
- * custom `MobileAim/sensors` path.
- */
-private const val MediaRoot = "MobileAim"
 
 @Composable
 fun MainScreen(
@@ -86,13 +72,73 @@ fun MainScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
-    var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
-    val onVideoCaptureReady = remember { { capture: VideoCapture<Recorder> -> videoCapture = capture } }
     var camera by remember { mutableStateOf<Camera?>(null) }
     val onCameraReady = remember { { boundCamera: Camera -> camera = boundCamera } }
-    var activeRecording by remember { mutableStateOf<Recording?>(null) }
     var isProfileSheetOpen by remember { mutableStateOf(false) }
     val uiState by aimViewModel.uiState.collectAsState()
+
+    // Logging = IMU CSV (AimViewModel) + screen recording (ScreenRecordingService). Starting takes
+    // up to two system dialogs — the optional microphone/notification permissions, then the
+    // screen-capture consent Android shows every time — and the CSV only starts once the consent
+    // is accepted, so a cancelled dialog leaves both off.
+    var isRequestingLogging by remember { mutableStateOf(false) }
+    val screenCaptureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        isRequestingLogging = false
+        val data = result.data
+        val activity = context.findActivity()
+        if (result.resultCode != Activity.RESULT_OK || data == null || activity == null) {
+            Toast.makeText(context, "화면 녹화를 허용하지 않아 로깅을 시작하지 않았습니다", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        val (width, height) = activity.realDisplaySize()
+        ScreenRecordingService.start(
+            context = context,
+            resultCode = result.resultCode,
+            resultData = data,
+            displayWidth = width,
+            displayHeight = height,
+            densityDpi = activity.resources.configuration.densityDpi,
+        )
+        aimViewModel.startLogging()
+    }
+    val launchScreenCapture = {
+        val projectionManager = context.getSystemService(MediaProjectionManager::class.java)
+        screenCaptureLauncher.launch(projectionManager.createScreenCaptureIntent())
+    }
+    // Whatever the user answers here, recording goes ahead — without RECORD_AUDIO it's just
+    // video-only, and without POST_NOTIFICATIONS the "로깅 중" notification is merely hidden.
+    val loggingPermissionsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        if (grants[Manifest.permission.RECORD_AUDIO] == false) {
+            Toast.makeText(context, "마이크 권한이 없어 소리 없이 녹화합니다", Toast.LENGTH_SHORT).show()
+        }
+        launchScreenCapture()
+    }
+    val stopLogging = remember(aimViewModel) {
+        {
+            aimViewModel.stopLogging()
+            ScreenRecordingService.stop(context)
+        }
+    }
+    val toggleLogging = {
+        when {
+            aimViewModel.isLoggingActive -> stopLogging()
+            isRequestingLogging -> Unit
+            // The previous session's file is still being finalized.
+            ScreenRecordingService.state.value != ScreenRecordingState.Idle ->
+                Toast.makeText(context, "이전 동영상을 저장하는 중입니다", Toast.LENGTH_SHORT).show()
+            else -> {
+                isRequestingLogging = true
+                val missing = loggingPermissions().filter {
+                    ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                }
+                if (missing.isEmpty()) launchScreenCapture() else loggingPermissionsLauncher.launch(missing.toTypedArray())
+            }
+        }
+    }
 
     // Muzzle shake for the on-screen indicator — listens only while the screen is resumed.
     val shakeMonitor = remember { ShakeMonitor(context) }
@@ -102,6 +148,11 @@ fun MainScreen(
             when (event) {
                 Lifecycle.Event.ON_RESUME -> shakeMonitor.start()
                 Lifecycle.Event.ON_PAUSE -> shakeMonitor.stop()
+                // Off-screen there's nothing of the sight left to record (the screen recording
+                // would show the launcher or the lock screen), so leaving the app ends the whole
+                // logging session, CSV included — the old CameraX recording likewise ended when
+                // the camera closed on stop.
+                Lifecycle.Event.ON_STOP -> stopLogging()
                 else -> Unit
             }
         }
@@ -150,18 +201,14 @@ fun MainScreen(
         }
     }
 
-    // The logging session's on/off state lives in AimViewModel (see AimUiState.isLoggingActive);
-    // this just reacts to it to drive the CameraX Recording object, which can't live in the
-    // ViewModel since it's tied to the bound VideoCapture use case.
-    LaunchedEffect(uiState.isLoggingActive, videoCapture) {
-        val capture = videoCapture ?: return@LaunchedEffect
-        if (uiState.isLoggingActive) {
-            if (activeRecording != null) return@LaunchedEffect
-            activeRecording = startVideoRecording(context, capture)
-        } else {
-            activeRecording?.stop()
-            activeRecording = null
-        }
+    // The recording ended without the logging button (start failed, the system or the user
+    // revoked the projection from the status bar, or the Activity was recreated while the service
+    // had died): end the CSV session too, so the button never shows "정지" with nothing recording.
+    // ScreenRecordingService.start sets Starting synchronously, before startLogging flips the VM,
+    // so a session that's just starting never reads as Idle here.
+    val recordingState by ScreenRecordingService.state.collectAsState()
+    LaunchedEffect(recordingState, uiState.isLoggingActive) {
+        if (recordingState == ScreenRecordingState.Idle && aimViewModel.isLoggingActive) aimViewModel.stopLogging()
     }
 
     Box(
@@ -171,7 +218,6 @@ fun MainScreen(
     ) {
         CameraPreview(
             hasCameraPermission = hasCameraPermission,
-            onVideoCaptureReady = onVideoCaptureReady,
             onCameraReady = onCameraReady,
             onCameraFovReady = aimViewModel::onCameraFovAvailable,
             onCameraError = onCameraError,
@@ -180,7 +226,7 @@ fun MainScreen(
         AimOverlay(
             uiState = uiState,
             onReticleDrag = aimViewModel::onReticleDrag,
-            onToggleLogging = aimViewModel::toggleLogging,
+            onToggleLogging = toggleLogging,
             onCaptureClick = {
                 val window = context.findActivity()?.window
                 if (window != null) {
@@ -300,47 +346,25 @@ private fun openScreenshotOutputStream(context: Context, fileName: String): Pair
     }
 }
 
+/** Runtime permissions the logging session asks for (all optional — see the launcher in [MainScreen]). */
+private fun loggingPermissions(): List<String> = buildList {
+    add(Manifest.permission.RECORD_AUDIO)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
+}
+
 /**
- * Starts recording camera video (no audio — the logging session only needs to visually confirm
- * the reticle stays put during a shake test, and skipping audio avoids needing RECORD_AUDIO) as
- * `video_<timestamp>.mp4`.
- *
- * Lands in the shared `Movies/$MediaRoot` collection (via MediaStore) on API 29+, same rationale
- * and fallback as [openScreenshotOutputStream]. The session's raw IMU CSV logs land alongside it under
- * `MobileAim/sensors` (see [dev.sangjun.mobileaim.logging.SensorMotionLogger]/[dev.sangjun.mobileaim.logging.CaptureLogWriter]) — the completion toast points there too.
+ * The display's full size in the current orientation (landscape — the Activity is locked to it),
+ * including the area under the hidden system bars, so the screen recording is a 1:1 copy of the
+ * panel rather than a letterboxed window.
  */
-private fun startVideoRecording(context: Context, videoCapture: VideoCapture<Recorder>): Recording {
-    val id = fileTimestampNow()
-    val fileName = "video_$id.mp4"
-    val (pendingRecording, displayLocation) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        val contentValues = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/$MediaRoot")
-        }
-        val outputOptions = MediaStoreOutputOptions
-            .Builder(context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-            .setContentValues(contentValues)
-            .build()
-        videoCapture.output.prepareRecording(context, outputOptions) to "${Environment.DIRECTORY_MOVIES}/$MediaRoot/$fileName"
+private fun Activity.realDisplaySize(): Pair<Int, Int> {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val bounds = windowManager.maximumWindowMetrics.bounds
+        bounds.width() to bounds.height()
     } else {
-        val dir = File(context.getExternalFilesDir(null), "$MediaRoot/videos").apply { mkdirs() }
-        val outputOptions = FileOutputOptions.Builder(File(dir, fileName)).build()
-        videoCapture.output.prepareRecording(context, outputOptions) to
-            "Android/data/${context.packageName}/files/$MediaRoot/videos/$fileName"
-    }
-    return pendingRecording.start(ContextCompat.getMainExecutor(context)) { event ->
-        if (event is VideoRecordEvent.Finalize) {
-            if (event.hasError()) {
-                Log.w("MobileAimCapture", "Video recording failed: ${event.error}", event.cause)
-                Toast.makeText(context, "동영상 저장 실패: ${event.cause?.message ?: "code ${event.error}"}", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(
-                    context,
-                    "동영상 저장됨: $displayLocation\n(센서 로그는 $MediaRoot/sensors 에 저장됨)",
-                    Toast.LENGTH_LONG,
-                ).show()
-            }
-        }
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(metrics)
+        metrics.widthPixels to metrics.heightPixels
     }
 }

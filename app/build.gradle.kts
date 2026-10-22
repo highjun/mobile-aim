@@ -149,7 +149,6 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
-    implementation("androidx.camera:camera-video:1.4.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("io.insert-koin:koin-android:3.5.6")
     // Official OpenCV Android AAR on Maven Central (packaging=aar, bundles native .so, no manual NDK setup).

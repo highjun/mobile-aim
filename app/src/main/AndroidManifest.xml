@@ -5,6 +5,18 @@
     <uses-feature android:name="android.hardware.camera" android:required="true" />
 
     <!--
+      Logging records the screen (MediaProjection) + microphone (gunshots) — see
+      ScreenRecordingService. RECORD_AUDIO is optional at runtime: denied → video-only recording.
+      POST_NOTIFICATIONS (Android 13+) only decides whether the "로깅 중" notification is visible;
+      the foreground service runs either way.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!--
       Normal permission (auto-granted, no runtime prompt) — required just to be *eligible* for
       Do-Not-Disturb access at all. Without this declared, the system's "앱별 방해 금지 액세스"
       settings screen won't even list this app as an option, regardless of what
@@ -28,5 +40,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".app.recording.ScreenRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
     </application>
 </manifest>

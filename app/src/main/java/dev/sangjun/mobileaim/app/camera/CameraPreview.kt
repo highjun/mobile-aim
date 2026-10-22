@@ -10,8 +10,6 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.ZoomState
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.Recorder
-import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -27,10 +25,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.hypot
 
 /**
- * v1: plain preview + video capture use case — no `ImageAnalysis`, since there's no CV frame
- * consumer anymore. No `ImageCapture` either — the "캡처" button saves a `PixelCopy` of the whole
- * screen instead (see [dev.sangjun.mobileaim.app.ui.MainScreen]'s `captureScreenshot`), so there's
- * no raw-sensor-frame use case to bind here.
+ * v1: plain preview only — no `ImageAnalysis`, since there's no CV frame consumer anymore. No
+ * `ImageCapture` or `VideoCapture` either — the "캡처" button saves a `PixelCopy` of the whole
+ * screen (see [dev.sangjun.mobileaim.app.ui.MainScreen]'s `captureScreenshot`) and "로깅" records
+ * the whole screen (see [dev.sangjun.mobileaim.app.recording.ScreenRecordingService]), both so the
+ * reticle and overlays are in the output, so there's no raw-sensor-frame use case to bind here.
  *
  * Every camera correction that moves or delays the image relative to the phone body is turned off
  * on the preview — see [AimCaptureRequestOptions].
@@ -39,7 +38,6 @@ import kotlin.math.hypot
 @Composable
 fun CameraPreview(
     hasCameraPermission: Boolean,
-    onVideoCaptureReady: (VideoCapture<Recorder>) -> Unit,
     onCameraReady: (Camera) -> Unit,
     onCameraFovReady: (CameraFov) -> Unit,
     onCameraError: (Throwable) -> Unit,
@@ -116,16 +114,13 @@ fun CameraPreview(
             val preview = previewBuilder.build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
-            val videoCapture = VideoCapture.withOutput(Recorder.Builder().build())
 
             provider.unbindAll()
             val camera = provider.bindToLifecycle(
                 lifecycleOwner,
                 CameraSelector.DEFAULT_BACK_CAMERA,
                 preview,
-                videoCapture,
             )
-            onVideoCaptureReady(videoCapture)
             onCameraReady(camera)
 
             zoomStateLiveData?.removeObserver(zoomStateObserver)
