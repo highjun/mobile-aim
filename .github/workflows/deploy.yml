@@ -3,6 +3,7 @@ name: Deploy to Play Store (Internal testing) and GitHub Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write  # gh release create
@@ -42,6 +43,16 @@ jobs:
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
+
+      # Kept as a run artifact so the signed bundle can also be uploaded by hand in Play Console
+      # (e.g. to make Play list a new permission that needs a declaration before the API can publish).
+      - name: Build signed bundle
+        run: ./gradlew bundleRelease -PversionCode=$VERSION_CODE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MobileAim-${{ env.VERSION_CODE }}-aab
+          path: app/build/outputs/bundle/release/app-release.aab
 
       # Tests gate the publish: Gradle stops at the first task failure, so a broken
       # testDebugUnitTest run never reaches publishReleaseBundle.
