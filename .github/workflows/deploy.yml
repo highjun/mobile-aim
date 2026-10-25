@@ -3,6 +3,9 @@ name: Deploy to Play Store (Internal testing) and GitHub Release
 on:
   push:
     branches: [main]
+    # 3D 출력 부품만 바뀐 push 는 앱을 다시 배포하지 않는다
+    paths-ignore:
+      - "hardware/**"
   workflow_dispatch:
 
 permissions:
