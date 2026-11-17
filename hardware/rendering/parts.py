@@ -15,7 +15,7 @@ from shared import (HOLDER_COLOR, HOLDER_STL, KNOB_COLOR, OLIGHT_COLOR, OLIGHT_H
                     olight_mount, rotary_switch, socket_knobs)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-M = "/tmp/mobileaim-render/"
+M = os.environ.get("MOBILEAIM_RENDER_DIR", "/tmp/mobileaim-render") + "/"  # step2stl.py output
 OUT = os.path.join(HERE, "..", "renders")
 SIZE = 1200          # output square side (px) of a single part
 COLOR = "#9aa0a8"

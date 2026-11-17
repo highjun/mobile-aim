@@ -11,7 +11,7 @@ import trimesh
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-M = "/tmp/mobileaim-render/"
+M = os.environ.get("MOBILEAIM_RENDER_DIR", "/tmp/mobileaim-render") + "/"  # step2stl.py output
 FONT = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 26)
 
 holder = trimesh.load(M + "laser-holder__laser-holder.stl")

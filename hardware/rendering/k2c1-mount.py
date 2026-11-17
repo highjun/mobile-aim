@@ -2,7 +2,7 @@
 with the laser holder (+ two knob screws on the socket, Ø23 pointer and beam) on the muzzle.
 
 Inputs (not in git):
-- /tmp/mobileaim-render/*.stl: run step2stl.py with freecadcmd first
+- $MOBILEAIM_RENDER_DIR/*.stl (default /tmp/mobileaim-render): run step2stl.py with freecadcmd first
 
 The case has four T-tongue pillars on its long side walls (two per side, at case y = 0 and 48.87).
 Each tongue sticks 5.6 mm out of the side wall (5 mm neck, 10 mm flange) and runs along the case
@@ -35,7 +35,7 @@ olight, olight_hw = olight_mount()                                   # rail top 
 for m in (olight, olight_hw):
     m.apply_translation([0, y_rail, z0])
 mount_top = y_rail + 22
-M = "/tmp/mobileaim-render/"  # step2stl.py output
+M = os.environ.get("MOBILEAIM_RENDER_DIR", "/tmp/mobileaim-render") + "/"  # step2stl.py output
 phone = trimesh.load(M + "reference__galaxy-s25-ultra.stl"); case = trimesh.load(M + "phone-case__case.stl"); cap = trimesh.load(M + "phone-case__cap.stl")
 
 

@@ -6,7 +6,7 @@ import os
 import numpy as np
 import trimesh
 
-M = "/tmp/mobileaim-render/"
+M = os.environ.get("MOBILEAIM_RENDER_DIR", "/tmp/mobileaim-render") + "/"  # step2stl.py output
 # holder as printed (laser-holder - printed.step: Ø22.6 front bore, no side boss), not the unprinted knob version
 HOLDER_STL = "laser-holder__laser-holder"
 R = trimesh.transformations.rotation_matrix

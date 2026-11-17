@@ -23,7 +23,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from shared import HOLDER_COLOR, KNOB_COLOR, POINTER_COLOR
 
-MESH = "/tmp/mobileaim-render"
+MESH = os.environ.get("MOBILEAIM_RENDER_DIR", "/tmp/mobileaim-render")
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "renders")
 FONT = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 26)

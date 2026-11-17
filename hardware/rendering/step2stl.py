@@ -1,6 +1,7 @@
 """STEP -> STL meshes for the rendering scripts. Run with FreeCAD: freecadcmd step2stl.py
 
-Writes every STEP under hardware/ to /tmp/mobileaim-render/<folder>__<name>.stl.
+Writes every STEP under hardware/ to $MOBILEAIM_RENDER_DIR/<folder>__<name>.stl
+(default /tmp/mobileaim-render).
 """
 import glob
 import os
@@ -10,7 +11,7 @@ import MeshPart
 import Part
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = "/tmp/mobileaim-render"
+OUT = os.environ.get("MOBILEAIM_RENDER_DIR", "/tmp/mobileaim-render")
 os.makedirs(OUT, exist_ok=True)
 for f in sorted(glob.glob(os.path.join(ROOT, "*", "*.step"))):
     folder = os.path.basename(os.path.dirname(f))
