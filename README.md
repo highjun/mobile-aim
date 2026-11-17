@@ -4,6 +4,7 @@
 
 - `app/`: Android 앱
 - `hardware/`: 3D 모델. 출력 부품(거치대, 레이저 보어사이터, 레이저 포인터 회전 스위치), 설계안(클램프 거치대, 레일 마운트), 그림 스크립트(참고: [hardware/README.md](hardware/README.md))
+- `DESIGN.md`: 앱의 동작 설계와 실측 기록(참고: [DESIGN.md](DESIGN.md))
 
 ## 앱 설치
 
@@ -24,3 +25,10 @@
 
 - 영점은 프로파일(총)과 배율마다 따로 저장된다.
 - 화면 오른쪽 끝 막대는 총구의 상하 떨림이다.
+
+## 빌드
+
+- Android 빌드: `./gradlew assembleDebug`
+- 유닛 테스트: `./gradlew testDebugUnitTest`
+- 앱은 CI(`.github/workflows/deploy.yml`)가 Play 내부 테스트와 GitHub Release 에 올리는 release build 하나다.
+  - 로컬 빌드는 서명 키가 Play 에서 받은 앱과 다르다. 그래서 Play 에서 받은 앱이 깔린 폰에는 덮어 깔 수 없다.

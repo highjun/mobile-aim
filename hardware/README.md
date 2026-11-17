@@ -14,6 +14,7 @@ Galaxy S25 Ultra 전용이다. 2026-10-19 K2C1 25m 실사격 95발에 썼다.
 
 - `case.step`·`case.stl`: 스마트폰을 넣는 케이스. T자 기둥을 피카티니 레일 마운트에 끼운다.
 - `cap.step`: 케이스를 덮는 캡. 카메라 창이 있다.
+- 나사 구멍: 케이스 6개는 Ø2.9 막힌 구멍이다(Ø2.8 에서 키움). 캡은 Ø3.3 관통(M3)이다.
 - `case-cap - X2D.gcode.3mf`: case·cap 한 판 BambuStudio 슬라이스(111.6g, 약 2시간 49분)
 - 조립
   - 스마트폰을 case 에 넣고 cap 을 M3 나사 6개로 조인다.
@@ -64,6 +65,21 @@ K2C1 소염기(총구 끝 부품)에 끼워 영점 초기 정렬에 쓴다.
 
 `rendering/` 의 스크립트가 `renders/` 에 그림을 그린다.
 
-- `step2stl.py`: 이 폴더의 STEP 을 `/tmp/mobileaim-render/` STL 로 바꾼다(`freecadcmd step2stl.py`). 다른 스크립트보다 먼저 돌린다.
-- `k2c1-mount.py`, `parts.py`, `phone-clamp.py`, `laser-holder.py`: 장착 모습, 출력 부품, 클램프, 레이저 홀더 그림
-- 폰·K2C1·레이저 포인터 스위치 형상(`reference/`)은 남의 것이라 이 repo 에 없다. 그래서 그 형상을 쓰는 그림은 이 repo 만으로는 다시 그릴 수 없다.
+- `step2stl.py`: 이 폴더의 STEP 을 STL 로 바꾼다(`freecadcmd step2stl.py`). 다른 스크립트보다 먼저 돌린다.
+  - STL 은 환경변수 `MOBILEAIM_RENDER_DIR` 의 폴더에 쓴다. 기본값은 `/tmp/mobileaim-render` 다. 다른 스크립트도 같은 폴더에서 읽는다.
+- `k2c1-mount.py`: 2분할 케이스의 기둥을 K2C1 의 Olight 레일 마운트에 바로 끼운 모습(렌즈가 총열 위쪽인 배치, 총구에 레이저 홀더)
+- `parts.py`: 출력 부품 4개(case·cap·laser-holder·knob)를 같은 각도·색·크기의 정사각 그림으로 그린다
+- `phone-clamp.py`: 클램프에 폰을 끼운 모습, 단면, K2C1 장착 제안(레이저 홀더 포함)
+- `laser-holder.py`: 레이저 홀더·노브·포인터·회전 스위치
+- `shared.py`: 위 스크립트가 함께 쓰는 색과 형상
+- 그림은 2026-10-19 실사격 때 출력한 `laser-holder/laser-holder - printed.step` 형상을 쓴다.
+- 폰·K2C1·레이저 포인터 스위치 형상(`reference/`)은 남의 것이라 이 repo 에 없다.
+  - `galaxy-s25-ultra.step`: Galaxy S25 Ultra 형상
+  - `daewoo-k2c1.obj`: K2C1 소총. 장착 어림용 근사 모델이다.
+  - `laser-pointer-switch/`: Ø23 레이저 포인터용 회전 스위치(riodoro1, Thingiverse 2557550, CC BY-SA). 출력 부품은 `laser-switch/` 의 자체 설계로 바꿨다. 그래서 그 형상을 쓰는 그림은 이 repo 만으로는 다시 그릴 수 없다.
+
+## 원본 설계
+
+- 원본은 Onshape 문서다: https://cad.onshape.com/documents/92d466bd486523eb8996a316/w/ca53ada99d471904a5b87cf1/e/5cb351b70f95595dda9b2a19
+- Onshape 원본은 직접 고치지 못한다. STEP 을 FreeCAD(`freecadcmd`)로 읽어 고친다.
+- Onshape 문서는 공개라 `/api/v6/.../features`·elements·shadedviews(그림)는 인증 없이 읽힌다. 질량·STL·스케치 치수는 401 이다.
