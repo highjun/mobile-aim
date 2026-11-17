@@ -1,0 +1,26 @@
+# Gradle / Android
+.gradle/
+build/
+**/build/
+local.properties
+
+# Release signing: never commit the upload key or its passwords
+keystore.properties
+*.jks
+*.keystore
+
+# Play Publisher service account: CI writes this from a secret, never commit it
+play-service-account.json
+
+# Android Studio
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# 3D 모델링에서 맞춤·장착 어림에만 쓰는 남의 형상: 저작권 때문에 공개하지 않는다
+hardware/reference/
+
+# Python
+__pycache__/

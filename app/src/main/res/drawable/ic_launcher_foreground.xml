@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder launcher icon: a simple reticle (cross + dot), echoing AimOverlay's own reticle
+     drawing. Swap for a real design later — this only exists so the app has an icon at all. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- top arm -->
+    <path android:fillColor="#FF3B30" android:pathData="M51,26h6v20h-6z" />
+    <!-- bottom arm -->
+    <path android:fillColor="#FF3B30" android:pathData="M51,62h6v20h-6z" />
+    <!-- left arm -->
+    <path android:fillColor="#FF3B30" android:pathData="M26,51h20v6h-20z" />
+    <!-- right arm -->
+    <path android:fillColor="#FF3B30" android:pathData="M62,51h20v6h-20z" />
+    <!-- center dot -->
+    <path android:fillColor="#FFFFFF" android:pathData="M48,54a6,6 0 1,0 12,0a6,6 0 1,0 -12,0" />
+</vector>
